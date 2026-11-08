@@ -64,6 +64,9 @@ nav.tabs button.on{color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
 .muted{color:var(--muted)}
 /* coach */
 .coach{display:flex;align-items:center;gap:12px;white-space:nowrap;overflow:hidden;padding:8px 14px;margin:2px 0 10px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:18px;min-height:50px}
+.coachrow{display:flex;gap:8px;align-items:stretch;margin:2px 0 10px}.coachrow .coach{flex:1;min-width:0;margin:0}
+.navbtn{flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 16px;border-radius:12px;border:1px solid var(--accent);background:rgba(76,180,245,.14);color:var(--text,#eef3f8);font:600 16px inherit;cursor:pointer;white-space:nowrap;max-width:38vw;overflow:hidden;text-overflow:ellipsis}
+.navbtn[hidden]{display:none}
 .coach .ci{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:800;flex:none;color:#0b0b0b;background:var(--muted)}
 .tone-good .ci{background:var(--good);color:#fff}.tone-warn .ci{background:var(--warn)}.tone-serious .ci{background:var(--serious)}.tone-crit .ci{background:var(--crit);color:#fff}.tone-info .ci{background:var(--accent);color:#05121d}
 .coach.tone-crit{border-color:rgba(208,59,59,.6)}.coach.tone-good{border-color:rgba(12,163,12,.45)}
@@ -122,7 +125,7 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
 @media (max-height:700px) and (min-height:561px){
   header.top{padding-top:calc(5px + env(safe-area-inset-top));padding-bottom:5px}
   .pill,.btn{min-height:38px;padding-top:6px;padding-bottom:6px}
-  .coach{font-size:15px;min-height:36px;padding:4px 12px;margin-bottom:6px}.coach .ci{width:22px;height:22px;font-size:12px}
+  .coach{font-size:15px;min-height:36px;padding:4px 12px;margin-bottom:6px}.coachrow{margin-bottom:6px}.navbtn{font-size:14px;padding:0 10px}.coach .ci{width:22px;height:22px;font-size:12px}
   nav.tabs button{padding:6px 4px 5px;font-size:12px}nav.tabs button svg{width:19px;height:19px}
   .card{padding:8px 12px}.card-h{margin-bottom:4px;font-size:11.5px}
   .live{gap:7px}.tiles{gap:7px}.tile{padding:5px 10px}.tile .t{font-size:12px}.tile .v{font-size:clamp(18px,4.4vh,28px)}
@@ -993,7 +996,7 @@ function featureAllowed(f) {
 
 /* ---------- Ajustes y unidades ---------- */
 const SKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
-const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null };
+const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', navApp: 'waze', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null };
 const S_RAW = store.get(SKEY, {});
 let S = Object.assign({}, DEFAULTS, S_RAW);
 function saveSettings() { store.set(SKEY, S); }
@@ -2138,6 +2141,32 @@ async function conversationInner() {
   if (a2 && a2 !== 'skip') return setDest(a2, goalTxt);
   App.dest = null; if (Josi.on) Josi.speak((a2 === 'skip' ? 'Perfecto, tú mandas. ' : '') + goalTxt, true);
 }
+/* ---------- Navegar con Waze / Google Maps con el destino que ya dijiste ---------- */
+function navUrl(name, app) {
+  const sim = App.transport?.kind === 'sim', p = Places.byName(name, sim), q = encodeURIComponent(name);
+  const ll = p ? `${p.lat.toFixed(6)},${p.lon.toFixed(6)}` : null;
+  if (app === 'gmaps') return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + (ll || q);
+  return ll ? `https://waze.com/ul?ll=${ll}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`;
+}
+function openNav(name) {
+  if (!name) return;
+  const app = S.navApp === 'gmaps' ? 'gmaps' : 'waze', nm = app === 'gmaps' ? 'Google Maps' : 'Waze', url = navUrl(name, app);
+  const sh = openModal(`<h2>🧭 Ir ${esc(toPhrase(name))}</h2>
+    <p class="muted" style="margin-top:0">Josi ya sabe el destino: no hace falta escribirlo otra vez.</p>
+    <div class="actions" style="flex-direction:column;align-items:stretch;gap:10px">
+      <a class="btn primary" id="nvOpen" href="${esc(url)}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;font-size:17px;padding:14px">Abrir ${nm} en esta tablet</a>
+      <button class="btn" id="nvSend" style="font-size:16px;padding:14px">Enviar al celular (Android Auto)</button>
+      <button class="btn" id="nvClose">Cerrar</button>
+    </div>
+    <p class="muted" style="font-size:13px">Si usas Waze con Android Auto desde tu celular, envía el destino al celular (WhatsApp, Telegram o Compartir cerca) y ábrelo allí. Si abres ${nm} en la tablet, ponlo en pantalla dividida para que Josi siga a la vista.</p>`);
+  sh.querySelector('#nvOpen').onclick = () => setTimeout(closeModal, 300);
+  sh.querySelector('#nvClose').onclick = closeModal;
+  sh.querySelector('#nvSend').onclick = async () => {
+    const text = `Ir ${toPhrase(name)} — ${nm}`;
+    try { if (navigator.share) { await navigator.share({ title: 'Destino de Josi', text, url }); closeModal(); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(url); toast('Enlace copiado: pégalo en el celular'); closeModal(); } catch (e) { toast('No se pudo compartir desde este navegador'); }
+  };
+}
 function setDest(name, goalTxt) {
   App.dest = name; const sim = App.transport?.kind === 'sim', known = Places.byName(name, sim);
   if (Josi.on) Josi.speak(`${known ? 'Listo' : 'Anotado'}, vamos ${toPhrase(name)}. ${goalTxt}`, true);
@@ -2737,7 +2766,7 @@ function viewLive() {
   const sim = App.transport?.kind === 'sim';
   if (!App.connected) return viewHero();
   return `
-  <div id="coach" class="coach tone-info"><span class="ci">i</span><span id="coachTxt"></span></div>
+  <div class="coachrow"><div id="coach" class="coach tone-info"><span class="ci">i</span><span id="coachTxt"></span></div><button id="navBtn" class="navbtn" hidden>🧭</button></div>
   <div class="live ${sim ? 'has-sim' : ''}">
     <section class="card gauge-card">
       <div class="card-h">Consumo instantáneo</div>
@@ -2843,6 +2872,7 @@ function renderLiveValues() {
 
     coach.className = 'coach tone-' + c.tone; coach.querySelector('.ci').textContent = c.icon; set('coachTxt', c.text);
   }
+  { const nb = $('#navBtn'); if (nb) { const on = !!App.dest && !App.prompt; if (nb.hidden === on) nb.hidden = !on; const tx = '🧭 ' + (App.dest || ''); if (on && nb.textContent !== tx) nb.textContent = tx; if (!nb._b) { nb._b = 1; nb.onclick = () => openNav(App.dest); } } }
   // medidor
   let frac = 0, val = '—', unit = Units.econLabel(), state = '', tone = 'info';
   if (d && d.engineOn) {
@@ -3225,6 +3255,7 @@ function viewSettings() {
     <div class="f"><span>Tono <span class="d">Más bajo suena más grave</span></span><input type="range" id="sPitch" min="0.5" max="1.3" step="0.05" value="${S.voicePitch ?? 0.85}"></div>
     <div class="f"><span>Velocidad al hablar</span><input type="range" id="sRate" min="0.8" max="1.25" step="0.05" value="${S.voiceRate ?? 1}"></div>
     <div class="f"><span>Josi escucha tus respuestas <span class="d">Solo al inicio, con el auto detenido. Usa el reconocimiento de voz de Google: necesita internet y permiso de micrófono.</span></span><input type="checkbox" id="sListen" ${S.voiceListen ? 'checked' : ''}></div>
+    <div class="f"><span>App de navegación <span class="d">Con el botón 🧭 Josi te abre la ruta al destino que ya dijiste</span></span><select id="sNav"><option value="waze" ${S.navApp !== 'gmaps' ? 'selected' : ''}>Waze</option><option value="gmaps" ${S.navApp === 'gmaps' ? 'selected' : ''}>Google Maps</option></select></div>
     <div class="f"><span>Detectar baches y rompemuelles <span class="d">Con el sensor de movimiento de la tablet. Debe ir bien fija en su soporte.</span></span><input type="checkbox" id="sBumps" ${S.bumps ? 'checked' : ''}></div>
     <div class="f"><span>Conectar solo al adaptador USB al abrir la app <span class="d">Después de darle permiso la primera vez</span></span><input type="checkbox" id="sAutoC" ${S.autoConnect ? 'checked' : ''}></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="sVoiceTest">Probar voz</button></div>
@@ -3317,6 +3348,7 @@ function bindSettings() {
     if (r) { Josi.speak(r, true); toast('Gemini respondió: ' + r.slice(0, 90)); } else errorBox('Gemini no respondió', 'Revisa la clave, el nombre del modelo y el internet. Mira el detalle en Diagnóstico → consola. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.');
   };
   $('#sName').onchange = e => { S.userName = e.target.value.trim() || 'Edwin'; saveSettings(); };
+  $('#sNav').onchange = e => { S.navApp = e.target.value; saveSettings(); };
   $('#sListen').onchange = e => { S.voiceListen = e.target.checked; saveSettings(); };
   $('#sBumps').onchange = e => { S.bumps = e.target.checked; saveSettings(); };
   $('#sAutoC').onchange = e => { S.autoConnect = e.target.checked; saveSettings(); };
