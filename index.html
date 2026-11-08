@@ -22,7 +22,19 @@ button,select,input{font:inherit;color:inherit}
 .hidden{display:none!important}
 header.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:calc(8px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 8px calc(14px + env(safe-area-inset-left))}
 .brand{display:flex;align-items:center;gap:8px;margin-right:4px}
-.wave{flex:1;min-width:60px;max-width:340px;height:34px;margin:0 auto;display:block}
+.hdr-sp{flex:1;min-width:8px}
+.josi-card{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 38%,rgba(76,180,245,.10),transparent 62%),var(--surface)}
+.josi-card .card-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.josi-card .card-h small{font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.josi-card .card-h small i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:0;box-shadow:0 0 8px currentColor}
+.josi-stage{position:relative;flex:1 1 0;min-height:90px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.josi-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.josi-car{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);height:31%;max-width:82%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 10px 14px rgba(0,0,0,.65))}
+.josi-floor{position:absolute;left:12%;right:12%;bottom:0;height:12%;background:radial-gradient(50% 50% at 50% 50%,rgba(76,180,245,.22),transparent 70%);pointer-events:none}
+.josi-foot{display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:8px;margin-top:6px}
+.josi-foot .mring{width:52px;height:52px;flex:none}.josi-foot .mring svg{width:100%;height:100%}
+.josi-foot .lbl{display:block}.josi-foot b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.josi-foot .grow{flex:1;min-width:0}.josi-foot .tr{text-align:right}
 @media (max-width:1180px){.brand span{display:none}}
 .car-thumb{height:34px;width:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
 .hero{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;align-items:center;height:100%;padding:10px 24px}
@@ -129,6 +141,7 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
   .bar-legend{display:none}.bar{height:16px}
   .stat .v{font-size:17px}.lbl{font-size:12px}.gauge-sub b{font-size:15px}
   .mini-row{padding-top:5px;margin-top:4px}.mini-row b{font-size:17px}
+  .josi-foot{padding-top:5px;margin-top:3px}.josi-foot .mring{width:42px;height:42px}.josi-foot b{font-size:15px}
   .sim-panel .row{margin-top:3px}.seg button{min-height:34px;padding:4px 10px}.sim-panel select{min-height:34px;padding:4px 8px}
   .goal-bar{height:6px}
 }
@@ -900,7 +913,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <div><b>Josi</b> <span>Fusion SE 2.0 EcoBoost · EcoDrive</span></div>
   </div>
   <button id="connBtn" class="pill"><span class="dot" id="connDot"></span><span id="connTxt">Desconectado</span></button>
-  <canvas id="wave" class="wave" aria-hidden="true"></canvas>
+  <div class="hdr-sp"></div>
   <div id="tripClock" class="trip-clock"></div>
   <button id="markBtn" class="btn" title="Marcar bache u obstáculo aquí" style="font-weight:600">⚑ Bache</button>
   <button id="talkBtn" class="btn icon" title="Hablar con Josi" aria-label="Hablar con Josi"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
@@ -987,8 +1000,9 @@ const store = {
 };
 const inFrame = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
 function featureAllowed(f) {
+  if (!inFrame) return true; // página propia: permitido (Chrome pedirá el permiso normal)
   try { const pp = document.permissionsPolicy || document.featurePolicy; if (pp && pp.allowsFeature) return pp.allowsFeature(f); } catch (e) {}
-  return !inFrame;
+  return false;
 }
 
 /* ---------- Ajustes y unidades ---------- */
@@ -2202,32 +2216,81 @@ const Voice = {
 };
 
 // Ondas de voz en la barra superior: líneas finas que se mueven cuando Josi habla
+// Esfera de puntos 3D: gira siempre, se deforma con la voz de Josi,
+// se vuelve verde cuando te escucha y violeta cuando piensa.
 const Wave = {
-  t: 0,
-  draw() {
-    const cv = document.getElementById('wave'); if (!cv || !cv.clientWidth) return;
-    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
-    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
-    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
-    this.t += 0.06; const mid = h / 2;
+  t: 0, last: 0, ry: 0, pts: null, ring: null, col: [76, 180, 245], stateTxt: '',
+  init() {
+    const N = 420, g = Math.PI * (3 - Math.sqrt(5)); this.pts = [];
+    for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), th = g * i; this.pts.push([Math.cos(th) * r, y, Math.sin(th) * r]); }
+    this.ring = []; for (let i = 0; i < 96; i++) { const a = i / 96 * Math.PI * 2; this.ring.push([Math.cos(a), 0, Math.sin(a)]); }
+  },
+  level() {
     let amp = 0;
     if (Voice.speaking && Voice.mode === 'azure' && Voice.analyser) {
       Voice.analyser.getByteTimeDomainData(Voice.buf); let pk = 0; for (const v of Voice.buf) pk = Math.max(pk, Math.abs(v - 128));
       Voice.level += (Math.min(1, pk / 60) - Voice.level) * 0.35; amp = Voice.level;
-    } else if (Voice.speaking) { Voice.level += (0.55 - Voice.level) * 0.04; amp = Math.min(1, Voice.level * 1.25) * (0.7 + 0.3 * Math.abs(Math.sin(this.t * 4.3))); }
+    } else if (Voice.speaking) { Voice.level += (0.55 - Voice.level) * 0.05; amp = Math.min(1, Voice.level * 1.2) * (0.55 + 0.45 * Math.abs(Math.sin(this.t * 4.3) * Math.sin(this.t * 2.1 + 1))); }
     else { Voice.level *= 0.9; amp = Voice.level; }
-    const listening = App.listening || Talk.wakeActive;
-    const base = listening && !Voice.speaking ? 0.12 + 0.06 * Math.sin(this.t * 2) : 0.035;
-    const A = Math.max(base, amp) * (h * 0.42);
-    const lines = [[1, 0.9, 2], [0.65, 0.5, 1.2], [0.4, 0.28, 1]];
-    lines.forEach(([k, alpha, lw], j) => {
-      c.beginPath(); c.lineWidth = lw; c.strokeStyle = `rgba(${listening && !Voice.speaking ? '120,220,170' : '76,180,245'},${alpha})`;
-      for (let x = 0; x <= w; x += 2) {
-        const e = Math.sin(Math.PI * x / w), y = mid + Math.sin(x * (0.035 + j * 0.012) + this.t * (2.2 + j * 0.7)) * A * k * e * (0.6 + 0.4 * Math.sin(x * 0.011 + this.t));
-        x ? c.lineTo(x, y) : c.moveTo(x, y);
-      }
-      c.stroke();
-    });
+    return amp;
+  },
+  setState(txt, rgb) {
+    if (txt === this.stateTxt) return; this.stateTxt = txt;
+    const el = document.getElementById('josiState'); if (el) el.innerHTML = `<i style="background:rgb(${rgb});color:rgb(${rgb})"></i>${txt}`;
+  },
+  draw() {
+    const cv = document.getElementById('orb');
+    if (!cv || !cv.clientWidth) { this.stateTxt = ''; return; }
+    if (!this.pts) this.init();
+    const now = performance.now(), dt = Math.min(0.05, (now - (this.last || now)) / 1000); this.last = now; this.t += dt;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    const amp = this.level(), speaking = Voice.speaking, listening = App.listening, thinking = App.thinking && !speaking;
+    // estado → color y velocidad de giro
+    let tgt, spin, label;
+    if (speaking) { tgt = [92, 196, 255]; spin = 0.7; label = 'Hablando'; }
+    else if (listening) { tgt = [88, 220, 160]; spin = 0.45; label = 'Te escucho'; }
+    else if (thinking) { tgt = [158, 136, 255]; spin = 1.9; label = 'Pensando'; }
+    else if (Talk.wakeActive) { tgt = [76, 180, 245]; spin = 0.22; label = 'Atento · di «Josi»'; }
+    else { tgt = [70, 150, 205]; spin = 0.16; label = App.connected ? 'Toca para hablar' : 'En reposo'; }
+    for (let i = 0; i < 3; i++) this.col[i] += (tgt[i] - this.col[i]) * Math.min(1, dt * 4);
+    const [cr, cg, cb] = this.col.map(Math.round), rgb = `${cr},${cg},${cb}`;
+    this.setState(label, rgb);
+    this.ry += dt * spin;
+    const rx = 0.38 + 0.12 * Math.sin(this.t * 0.37), cx = w / 2, cy = h * 0.35;
+    const breath = listening ? 0.05 * Math.sin(this.t * 5) : thinking ? 0.03 * Math.sin(this.t * 7) : 0.015 * Math.sin(this.t * 1.3);
+    const R = Math.max(16, Math.min(w * 0.30, h * 0.235)) * (1 + 0.06 * amp + breath);
+    // halo
+    const glow = c.createRadialGradient(cx, cy, R * 0.1, cx, cy, Math.min(R * 1.7, w / 2, cy));
+    glow.addColorStop(0, `rgba(${rgb},${(0.16 + amp * 0.32).toFixed(3)})`); glow.addColorStop(1, `rgba(${rgb},0)`);
+    c.fillStyle = glow; c.fillRect(0, 0, w, h);
+    const sy = Math.sin(this.ry), cyR = Math.cos(this.ry), sx = Math.sin(rx), cxR = Math.cos(rx), T = this.t;
+    const proj = (x, y, z, k) => {
+      const x1 = x * cyR + z * sy, z1 = -x * sy + z * cyR, y1 = y * cxR - z1 * sx, z2 = y * sx + z1 * cxR;
+      const pz = 1 / (1 - z2 * 0.28); return [cx + x1 * R * k * pz, cy + y1 * R * k * pz, z2];
+    };
+    const back = [], front = [];
+    for (const [x, y, z] of this.pts) {
+      // ondas que recorren la esfera cuando habla
+      const wv = amp * 0.24 * (Math.sin(3.1 * x + T * 6.2) * Math.cos(2.7 * y - T * 4.4) + 0.6 * Math.sin(4.3 * z + 2.2 * y + T * 7.6));
+      const lw = listening ? 0.06 * Math.sin(6 * y - T * 6) : 0;
+      const k = 1 + wv + lw, q = proj(x, y, z, k); (q[2] < 0 ? back : front).push(q);
+    }
+    const ringPts = this.ring.map(([x, , z]) => { const a = -T * 0.5, X = x * Math.cos(a) - z * Math.sin(a), Z = x * Math.sin(a) + z * Math.cos(a); return proj(X * 1.42, 0.10 * Math.sin(T + x * 3) * amp, Z * 1.42, 1); });
+    const dot = (q, base, a0) => {
+      const f = (q[2] + 1) / 2, sz = base * (0.55 + 0.9 * f) * (1 + amp * 0.5);
+      c.globalAlpha = Math.min(1, a0 * (0.18 + 0.82 * f)); c.beginPath(); c.arc(q[0], q[1], sz, 0, 6.2832); c.fill();
+    };
+    const base = Math.max(0.75, R / 60);
+    c.fillStyle = `rgb(${rgb})`;
+    for (const q of ringPts) if (q[2] < 0) dot(q, base * 0.55, 0.55);
+    for (const q of back) dot(q, base, 0.7);
+    c.fillStyle = `rgb(${Math.min(255, cr + 70)},${Math.min(255, cg + 50)},${Math.min(255, cb + 20)})`;
+    for (const q of front) dot(q, base, 1);
+    c.fillStyle = `rgb(${rgb})`;
+    for (const q of ringPts) if (q[2] >= 0) dot(q, base * 0.6, 0.8);
+    c.globalAlpha = 1;
   },
 };
 
@@ -2259,7 +2322,57 @@ function localAnswer(q) {
   if (/turbo/.test(t)) { const b = App.lastD?.boost; return b > 0.05 ? `El turbo está empujando ${sayNum(b, 1)} bar.` : 'El turbo está en reposo: vas en modo económico.'; }
   if (/tanque|combustible|gasolina queda|nivel/.test(t)) return V.fuel != null ? `El tanque está al ${Math.round(V.fuel)} por ciento.` : 'El auto no me está dando el nivel del tanque.';
   if (/puntaje/.test(t)) { const s = tr?.liveScore(); return s != null ? `Tu puntaje en este viaje va en ${s}.` : 'Todavía no hay puntaje para este viaje.'; }
+  { const h = histAnswer(t); if (h) return h; }
   if (/que haces|quien eres/.test(t)) return `Aquí, cuidando el consumo contigo, ${name}. Pregúntame por la meta, el gasto, el motor o pídeme marcar un bache.`;
+  return null;
+}
+// Resumen de tus viajes para que Josi pueda conversar con tu historial
+const FRANJA = h => h < 12 ? 'mañana' : h < 19 ? 'tarde' : 'noche';
+function tripsFor() { const sim = App.transport?.kind === 'sim'; return App.trips.filter(t => !!t.sim === sim && t.km > 0.2 && t.L > 0); }
+function josiRoutes(ts) {
+  const m = {}; for (const t of ts) { const n = t.route || (t.fromName && t.toName ? `${t.fromName} → ${t.toName}` : ''); if (!n) continue; (m[n] = m[n] || []).push(t); }
+  return Object.entries(m).map(([name, a]) => { const km = a.reduce((x, t) => x + t.km, 0), L = a.reduce((x, t) => x + t.L, 0), sc = a.filter(t => t.score != null);
+    return { name, n: a.length, kmpl: L > 0 ? km / L : null, min: Math.round(a.reduce((x, t) => x + t.durS, 0) / a.length / 60), score: sc.length ? Math.round(sc.reduce((x, t) => x + t.score, 0) / sc.length) : null }; })
+    .sort((a, b) => b.n - a.n);
+}
+function historyCtx() {
+  const ts = tripsFor(); if (!ts.length) return null;
+  const r1 = v => v == null ? null : +Units.econ(v).toFixed(1), wk = Date.now() - 7 * 864e5;
+  const sum = a => { const km = a.reduce((x, t) => x + t.km, 0), L = a.reduce((x, t) => x + t.L, 0); return { viajes: a.length, km: +km.toFixed(1), litros: +L.toFixed(2), rendimiento: r1(L > 0 ? km / L : null) }; };
+  const fr = {}; for (const t of ts) (fr[FRANJA(new Date(t.start).getHours())] = fr[FRANJA(new Date(t.start).getHours())] || []).push(t);
+  const evs = a => { const k = Object.entries(a.reduce((m, t) => { for (const [p, v] of Object.entries(t.parts || {})) m[p] = (m[p] || 0) + v; return m; }, {})).sort((x, y) => y[1] - x[1])[0]; return k ? PART_LABEL[k[0]] : null; };
+  return {
+    ultimos_viajes: ts.slice(0, 8).map(t => ({ fecha: new Date(t.start).toLocaleString(LOC, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      ruta: t.route || (t.fromName && t.toName ? `${t.fromName} → ${t.toName}` : null), km: +t.km.toFixed(1), minutos: Math.round(t.durS / 60), rendimiento: r1(t.kmpl), puntaje: t.score,
+      frenadas_bruscas: t.ev?.hardBrake || 0, aceleraciones_bruscas: t.ev?.hardAccel || 0, ralenti_min: Math.round((t.idleS || 0) / 60) })),
+    ultimos_7_dias: sum(ts.filter(t => t.start >= wk)), total_guardado: sum(ts),
+    por_franja_horaria: Object.fromEntries(Object.entries(fr).map(([f, a]) => [f, sum(a)])),
+    rutas: josiRoutes(ts).slice(0, 6).map(r => ({ ruta: r.name, viajes: r.n, rendimiento: r1(r.kmpl), minutos_promedio: r.min, puntaje: r.score })),
+    lo_que_mas_resta_puntaje: evs(ts.slice(0, 10)),
+    baches_y_rompemuelles_conocidos: Hazards.list.filter(h => Hazards.confirmed(h)).length,
+  };
+}
+function histAnswer(t) {
+  const ts = tripsFor(), name = S.userName || 'Edwin';
+  if (/ultimo viaje|viaje anterior|ayer/.test(t)) {
+    const x = ts[0]; if (!x) return 'Todavía no tengo viajes guardados.';
+    return `El último viaje fue ${x.route ? 'de ' + x.route.replace('→', 'a') + ', ' : ''}${sayNum(Units.dist(x.km))} kilómetros a ${x.kmpl ? spokenEcon(x.kmpl) : 'un rendimiento sin dato'}${x.score != null ? ', con puntaje ' + x.score : ''}.`;
+  }
+  if (/mejor ruta|que ruta|cual ruta|ruta rinde|ruta conviene/.test(t)) {
+    const r = josiRoutes(ts).filter(r => r.kmpl); if (!r.length) return 'Aún no tengo rutas con nombre para comparar. Termina un par de viajes y te digo.';
+    const b = r.reduce((a, c) => c.kmpl > a.kmpl ? c : a); return r.length === 1 ? `Por ahora solo conozco ${b.name.replace('→', 'a')}: rinde ${spokenEcon(b.kmpl)}.` : `La que mejor rinde es ${b.name.replace('→', 'a')}, con ${spokenEcon(b.kmpl)} en promedio.`;
+  }
+  if (/semana|ultimos dias/.test(t)) {
+    const a = ts.filter(x => x.start >= Date.now() - 7 * 864e5); if (!a.length) return 'Esta semana aún no hay viajes guardados.';
+    const km = a.reduce((s, x) => s + x.km, 0), L = a.reduce((s, x) => s + x.L, 0), k = km / L, g = goalKmpl();
+    return `En los últimos siete días hicimos ${a.length} viajes y ${sayNum(Units.dist(km), 0)} kilómetros, a ${spokenEcon(k)}. ${k >= g ? '¡Por encima de la meta, ' + name + '!' : 'Nos falta ' + sayNum(Units.econ(g) - Units.econ(k)) + ' para la meta.'}`;
+  }
+  if (/en que fallo|que mejoro|que mejorar|como manejo|como mejoro/.test(t) || (!S.aiKey && /consejo/.test(t))) {
+    const a = ts.slice(0, 10); if (!a.length) return null;
+    const m = a.reduce((m, x) => { for (const [p, v] of Object.entries(x.parts || {})) m[p] = (m[p] || 0) + v; return m; }, {}), top = Object.entries(m).sort((x, y) => y[1] - x[1])[0];
+    const tip = { accel: 'acelerar más progresivo, como si llevaras un vaso de agua', brake: 'soltar el acelerador antes y frenar menos', rpm: 'cambiar o aliviar antes de pasar las 3000 revoluciones', load: 'no pisar a fondo: el turbo gasta mucho', speed: 'bajar un poco la velocidad en vía rápida', idle: 'apagar si vas a esperar más de un minuto' };
+    return top ? `En tus últimos viajes lo que más te resta es ${PART_LABEL[top[0]].toLowerCase()}. El truco: ${tip[top[0]] || 'manejar más parejo'}.` : null;
+  }
   return null;
 }
 const AI_HIST = [];
@@ -2271,8 +2384,8 @@ async function askAI(q) {
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12) };
-  const sys = `Eres Josi, el copiloto de voz del auto de ${S.userName || 'Edwin'}. Hablas español latinoamericano natural, cálido y sereno, como una persona tranquila; nada de exageraciones ni frases de robot. Tus respuestas se leen en voz alta mientras él maneja: máximo dos frases cortas, sin listas, sin emojis, sin markdown. Nunca le pidas mirar la pantalla ni escribir. Usa solo los datos del auto que te paso y no inventes cifras. Si algo puede ser peligroso, prioriza la seguridad. Tu objetivo es ayudarle a manejar seguro y gastar menos gasolina.`;
+    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx() };
+  const sys = `Eres Josi, el copiloto de voz del auto de ${S.userName || 'Edwin'}. Hablas español latinoamericano natural, cálido y sereno, como una persona tranquila; nada de exageraciones ni frases de robot. Tus respuestas se leen en voz alta mientras él maneja: máximo dos frases cortas, sin listas, sin emojis, sin markdown. Nunca le pidas mirar la pantalla ni escribir. Usa solo los datos del auto que te paso y no inventes cifras. El campo historial resume sus viajes guardados (rutas, horarios, rendimiento, hábitos): úsalo para comparar y dar consejos personales. Si algo puede ser peligroso, prioriza la seguridad. Tu objetivo es ayudarle a manejar seguro y gastar menos gasolina.`;
   const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-6), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 200, temperature: 0.7 } };
   const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 9000);
   try {
@@ -2720,6 +2833,13 @@ function ringSVG() {
     <text id="rLbl" x="80" y="114" fill="#7d8b9b" font-size="14" font-weight="600" text-anchor="middle"></text>
   </svg>`;
 }
+function miniRingSVG() {
+  return `<svg viewBox="0 0 160 160" role="img" aria-label="Puntaje eco">
+    <circle cx="80" cy="80" r="64" stroke="#232d39" stroke-width="16" fill="none"/>
+    <circle id="rArc" cx="80" cy="80" r="64" stroke="#4cb4f5" stroke-width="16" fill="none" stroke-linecap="round" transform="rotate(-90 80 80)" stroke-dasharray="402.1" stroke-dashoffset="402.1" style="transition:stroke-dashoffset .5s,stroke .5s"/>
+    <text id="rVal" x="80" y="99" fill="#eef3f8" font-size="56" font-weight="700" text-anchor="middle">—</text>
+  </svg>`;
+}
 const tile = (id, t, u) => `<div class="tile"><span class="t">${t}</span><div><span class="v num" id="${id}">—</span><span class="u" id="${id}U">${u}</span></div></div>`;
 const stat = (id, t) => `<div class="stat"><span class="lbl">${t}</span><div class="v num" id="${id}">—</div></div>`;
 
@@ -2748,10 +2868,16 @@ function viewLive() {
         <div><span class="lbl">Gasto ahora</span><b id="gLph" class="num">—</b></div>
       </div>
     </section>
-    <section class="card score-card">
-      <div class="card-h">Puntaje eco <small>últimos 2 min</small></div>
-      <div class="ring-wrap">${ringSVG()}</div>
-      <div class="mini-row"><span>Puntaje del viaje</span><b id="tripScore" class="num">—</b></div>
+    <section class="card score-card josi-card">
+      <div class="card-h">Josi <small id="josiState"><i></i>Atento</small></div>
+      <div class="josi-stage" id="josiStage" title="Toca para hablar con Josi" role="button" aria-label="Hablar con Josi">
+        <canvas id="orb" aria-hidden="true"></canvas><div class="josi-floor"></div><img class="josi-car" src="${CAR_IMG}" alt="">
+      </div>
+      <div class="josi-foot">
+        <div class="mring">${miniRingSVG()}</div>
+        <div class="grow"><span class="lbl">Puntaje eco · 2 min</span><b id="rLbl">—</b></div>
+        <div class="tr"><span class="lbl">Viaje</span><b id="tripScore" class="num">—</b></div>
+      </div>
     </section>
     <section class="tiles">
       ${tile('tSpeed', 'Velocidad', Units.speedLabel())}${tile('tRpm', 'Revoluciones', 'rpm')}
@@ -2864,7 +2990,7 @@ function renderLiveValues() {
   // puntaje
   const sc = d?.liveScore ?? null, sb = scoreBand(sc), scol = sb.tone === 'info' ? '#4cb4f5' : getComputedStyle(document.documentElement).getPropertyValue('--' + sb.tone).trim();
   $('#rArc').setAttribute('stroke-dashoffset', (402.1 * (1 - (sc ?? 0) / 100)).toFixed(1)); $('#rArc').setAttribute('stroke', scol);
-  set('rVal', sc == null ? '—' : String(sc)); set('rLbl', (sb.icon !== '…' ? sb.icon + ' ' : '') + sb.label); $('#rLbl').setAttribute('fill', sb.tone === 'info' ? '#7d8b9b' : scol);
+  set('rVal', sc == null ? '—' : String(sc)); set('rLbl', (sb.icon !== '…' ? sb.icon + ' ' : '') + sb.label); { const rl = $('#rLbl'), rc = sb.tone === 'info' ? '#9fb0c2' : scol; rl.setAttribute('fill', rc); rl.style.color = rc; }
   const ts = tr ? tr.liveScore() : null; set('tripScore', ts == null ? '—' : String(ts));
   // mosaicos
   set('tSpeed', V.speed == null ? '—' : fmt(Units.speed(V.speed)));
@@ -3394,6 +3520,7 @@ function boot() {
   $('#connBtn').onclick = showConnect;
   $('#brandCar').src = CAR_IMG;
   $('#markBtn').onclick = markHazard;
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#josiStage')) $('#talkBtn').click(); });
   $('#talkBtn').onclick = () => { if (!App.connected) { toast('Conecta primero el adaptador o la simulación'); return; } Talk.button(); };
   document.addEventListener('pointerdown', () => { try { Voice.ctx && Voice.ctx.resume(); } catch (e) {} }, true);
   document.addEventListener('pointerdown', () => { if (Josi.pending) { const t = Josi.pending; Josi.pending = null; App.needTap = false; Josi.speak(t, true); } }, true);
