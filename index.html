@@ -31,6 +31,7 @@ header.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:calc(
 .hero p{color:var(--ink2);font-size:17px;margin:0 0 18px}
 .hero .meta{display:flex;gap:26px;margin:16px 0 20px}.hero .meta b{display:block;font-size:24px}
 @media (max-width:760px){.hero{grid-template-columns:1fr;text-align:center}.hero .meta{justify-content:center}}
+#talkBtn.on{color:#5fd39a;border-color:rgba(95,211,154,.5)}
 .voice-btn.on{color:var(--accent);border-color:rgba(76,180,245,.5)}
 .brand b{font-size:18px;letter-spacing:.2px}
 .brand span{color:var(--muted);font-size:13px}
@@ -1887,8 +1888,9 @@ const Josi = {
   speak(text, force) {
     if (App.prompt && !force) return false;
     if (!this.on && !force) return false;
-    const h = { onend: null };
-    try { Voice.say(text, h); } catch (e) { return false; }
+    const h = { onend: null }, inner = { onend: () => { if (!Talk.busy) Talk.resumeWake(); h.onend && h.onend(); } };
+    Talk.stopWake(); App.josiSays = { text, until: performance.now() + Math.max(5000, text.length * 75) }; App.dirty = true;
+    try { Voice.say(text, inner); } catch (e) { return false; }
     this.lastSpoke = performance.now(); logLine('i', 'Josi: ' + text); return h;
   },
   // pide hablar: prioridad 'tip' (máx. 1 cada 2 min), 'praise' (máx. 1 cada 2 min), 'info' (siempre)
@@ -2068,17 +2070,34 @@ function speakAwait(text) {
     h.onend = fin; setTimeout(fin, 3500 + text.length * 90);
   });
 }
-function listen(ms = 6000, force = false) {
+let SR_ACTIVE = null;
+function micNote(text, ms = 6000) { App.micMsg = { text, until: performance.now() + ms }; App.dirty = true; }
+const SR_ERR = { 'no-speech': 'No detecté voz. Toca 🎙 y habla después del tono.', 'audio-capture': 'El micrófono está ocupado o no responde. Cierra otras apps que lo usen.',
+  'not-allowed': 'Sin permiso de micrófono: en Chrome toca el candado → Permisos → Micrófono → Permitir.', 'service-not-allowed': 'Chrome no permite reconocer voz aquí. Abre la app desde tu enlace en Chrome.',
+  network: 'Sin internet: el reconocimiento de voz de Chrome necesita conexión.', 'language-not-supported': 'El idioma español no está disponible para voz en este Chrome.' };
+async function listen(ms = 6000, force = false, quiet = false) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { if (!quiet) micNote('Este navegador no reconoce voz. Usa Google Chrome.'); return null; }
+  if (!S.voiceListen && !force) return null;
+  if (!featureAllowed('microphone')) { if (!quiet) micNote('Esta vista bloquea el micrófono. Abre la app desde tu enlace propio.'); return null; }
+  if (!navigator.onLine) { if (!quiet) micNote(SR_ERR.network); return null; }
+  await Talk.stopWakeAsync();
   return new Promise(res => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR || (!S.voiceListen && !force) || !navigator.onLine || !featureAllowed('microphone')) return res(null);
-    Talk.stopWake();
-    try {
-      const r = new SR(); r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = false; r.maxAlternatives = 3;
-      let done = false; const fin = v => { if (!done) { done = true; App.listening = false; App.dirty = true; res(v); } };
-      r.onresult = e => fin(e.results[0][0].transcript); r.onerror = () => fin(null); r.onend = () => fin(null);
-      App.listening = true; App.dirty = true; r.start(); setTimeout(() => { try { r.stop(); } catch (_) {} }, ms);
-    } catch (e) { res(null); }
+    let r; try { r = new SR(); } catch (e) { if (!quiet) micNote('No se pudo abrir el micrófono.'); return res(null); }
+    r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = true; r.maxAlternatives = 1; r.continuous = false;
+    let done = false, last = '', err = null;
+    const fin = v => {
+      if (done) return; done = true; SR_ACTIVE = null; App.listening = false; App.heardLive = ''; App.dirty = true;
+      if (!v && !quiet) micNote(err ? (SR_ERR[err] || 'Error de micrófono: ' + err) : 'No te escuché. Toca 🎙 y habla después del tono.');
+      if (v) logLine('i', 'Escuché: ' + v);
+      res(v);
+    };
+    r.onresult = e => { let txt = ''; for (const x of e.results) txt += x[0].transcript; last = txt; App.heardLive = txt; App.dirty = true; if (e.results[e.results.length - 1].isFinal) fin(txt.trim() || null); };
+    r.onerror = e => { err = e.error; logLine('!', 'Micrófono: ' + e.error); };
+    r.onend = () => fin(last.trim() || null);
+    App.listening = true; App.heardLive = ''; App.dirty = true; SR_ACTIVE = r;
+    try { r.start(); } catch (e) { err = e.message; fin(null); return; }
+    setTimeout(() => { try { r.stop(); } catch (_) {} }, ms);
   });
 }
 // muestra la pregunta en pantalla con botones y, si se puede, escucha la respuesta hablada
@@ -2089,7 +2108,7 @@ function askUser(text, buttons, parse) {
     App.promptMoveGuard = fin;
     setTimeout(() => fin(null), 30000);
     await speakAwait(text); if (done) return;
-    const heard = await listen(6000); if (done) return;
+    const heard = await listen(6000, false, true); if (done) return;
     if (heard) { logLine('i', 'Escuché: ' + heard); const v = parse(heard); if (v != null) fin(v); }
   });
 }
@@ -2265,47 +2284,84 @@ async function askAI(q) {
     return txt || null;
   } catch (e) { logLine('!', 'IA: ' + e.message); return null; } finally { clearTimeout(to); }
 }
+const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 const Talk = {
-  busy: false, rec: null, wakeActive: false,
+  busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
+  beep() {
+    try {
+      const c = Voice.ctx || (Voice.ctx = new (window.AudioContext || window.webkitAudioContext)()); c.resume && c.resume();
+      const t = c.currentTime;
+      [[880, 0], [1320, 0.1]].forEach(([f, d]) => { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.22, t + d + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.085);
+        o.connect(g); g.connect(c.destination); o.start(t + d); o.stop(t + d + 0.1); });
+    } catch (e) {}
+  },
   async answer(q) {
     logLine('i', 'Tú: ' + q);
     const local = localAnswer(q); if (local) { await speakAwait(local); return; }
     if (S.aiKey && navigator.onLine) {
       App.thinking = true; App.dirty = true;
-      const r = await askAI(q); App.thinking = false;
+      const r = await askAI(q); App.thinking = false; App.dirty = true;
       if (r) { await speakAwait(r); return; }
     }
-    await speakAwait(S.aiKey ? 'No pude conectarme para responder eso. Revisa el internet de la tablet.' : 'Eso todavía no lo sé. Pregúntame por la meta, el gasto de hoy o del mes, el motor, o pídeme marcar un bache.');
+    await speakAwait(S.aiKey ? 'No pude conectarme para responder eso. Revisa el internet.' : 'Eso todavía no lo sé. Pregúntame por la meta, el gasto de hoy o del mes, el motor, o pídeme marcar un bache.');
   },
-  async open(first) {
-    if (this.busy) return; this.busy = true; this.stopWake();
+  // botón 🎙: el micrófono se abre al instante (dentro del toque), con un tono corto
+  async button() {
+    if (this.busy) return; this.busy = true; Voice.stop(); this.beep();
+    try { const q = await listen(7000, true); if (q) { micNote('Escuché: «' + q + '»', 4000); await this.answer(q); } }
+    finally { this.busy = false; this.resumeWake(); }
+  },
+  async wakeHeard(rest) {
+    if (this.busy) return; this.busy = true;
     try {
-      if (first && first.split(/\s+/).length >= 2) { await this.answer(first); return; }
-      await speakAwait(pick([`Aquí estoy, ${S.userName || 'Edwin'}. Dime.`, 'Te escucho.', 'Dime.']));
+      rest = (rest || '').replace(/^(est[aá]s( ah[ií])?|me escuchas|ah[ií])[\s,?¿.!]*/i, '').trim();
+      micNote('Escuché: «Josi' + (rest ? ', ' + rest : '') + '»', 3000);
+      if (rest.split(/\s+/).filter(Boolean).length >= 2) { await this.answer(rest); return; }
+      await speakAwait(pick([`Aquí estoy, ${S.userName || 'Edwin'}. Dime.`, 'Aquí estoy. Dime.', 'Te escucho.']));
+      this.beep();
       const q = await listen(7000, true);
-      if (q) await this.answer(q); else toast('No te escuché. Toca 🎙 o di «Josi» y tu pregunta.');
-    } finally { this.busy = false; setTimeout(() => this.startWake(), 600); }
+      if (q) await this.answer(q);
+    } finally { this.busy = false; this.resumeWake(); }
   },
   wakeWanted() { return S.wake && SRC && App.connected && navigator.onLine && featureAllowed('microphone') && Josi.on; },
+  resumeWake() { clearTimeout(this._rt); this._rt = setTimeout(() => this.startWake(), 700); },
   startWake() {
-    if (this.rec || this.busy || !this.wakeWanted()) return;
-    try {
-      const r = new SRC(); r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.continuous = true; r.interimResults = true;
-      const WAKE = /\b(jos[iíy]e?|yos[iíy]|hosi|josie)\b/i;
-      r.onresult = e => {
-        if (Voice.speaking || App.prompt) return;
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const txt = e.results[i][0].transcript; if (!WAKE.test(txt) || !e.results[i].isFinal) continue;
-          const rest = txt.split(WAKE).pop().replace(/^[\s,.]*(est[aá]s ah[ií]|est[aá]s|me escuchas)?[\s,?¿.]*/i, '').trim();
-          this.stopWake(); this.open(rest); return;
-        }
-      };
-      r.onend = () => { this.rec = null; this.wakeActive = false; if (!this.busy && this.wakeWanted()) setTimeout(() => this.startWake(), 900); };
-      r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); toast('Sin permiso de micrófono: usa el botón 🎙 para hablar con Josi'); } };
-      r.start(); this.rec = r; this.wakeActive = true;
-    } catch (e) { this.rec = null; this.wakeActive = false; }
+    if (this.rec || this.busy || Voice.speaking || SR_ACTIVE || App.prompt || !this.wakeWanted()) return;
+    let r;
+    try { r = new SRC(); } catch (e) { return; }
+    r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.continuous = false; r.interimResults = true;
+    r.onresult = e => {
+      let txt = ''; for (const x of e.results) txt += x[0].transcript;
+      const m = txt.match(WAKE); if (!m) return;
+      const rest = txt.slice(m.index + m[0].length).replace(/^[\s,.!¿?]+/, '').trim();
+      if (!e.results[e.results.length - 1].isFinal) { this._pending = rest; return; }
+      this._pending = null; this.stopWake(); this.wakeHeard(rest);
+    };
+    r.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); micNote(SR_ERR[e.error], 9000); }
+      else if (e.error === 'audio-capture') micNote(SR_ERR['audio-capture']);
+      else if (e.error === 'network') this.wakeErrors++;
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') logLine('!', 'Escucha de «Josi»: ' + e.error);
+    };
+    r.onend = () => {
+      this.rec = null; this.wakeActive = false; App.dirty = true;
+      const pend = this._pending; this._pending = null;
+      if (pend != null && !this.busy) { this.wakeHeard(pend); return; }
+      if (!this.busy && this.wakeWanted()) this._rt = setTimeout(() => this.startWake(), this.wakeErrors > 3 ? 5000 : 250);
+    };
+    try { r.start(); this.rec = r; this.wakeActive = true; App.dirty = true; } catch (e) { this.rec = null; }
   },
-  stopWake() { const r = this.rec; this.rec = null; this.wakeActive = false; if (r) { r.onend = null; try { r.abort(); } catch (e) {} } },
+  stopWake() { clearTimeout(this._rt); const r = this.rec; this.rec = null; this.wakeActive = false; if (r) { r.onend = null; r.onresult = null; try { r.abort(); } catch (e) {} } },
+  stopWakeAsync() {
+    clearTimeout(this._rt);
+    return new Promise(res => {
+      const r = this.rec; if (!r) return res();
+      this.rec = null; this.wakeActive = false; r.onresult = null;
+      let done = false; const fin = () => { if (!done) { done = true; res(); } };
+      r.onend = () => setTimeout(fin, 120); try { r.abort(); } catch (e) { fin(); } setTimeout(fin, 500);
+    });
+  },
 };
 
 /* =====================================================================
@@ -2777,11 +2833,14 @@ function renderLiveValues() {
     }
   } else {
     if (coach.dataset.pid) { delete coach.dataset.pid; coach.innerHTML = '<span class="ci">i</span><span id="coachTxt"></span>'; }
-    let c = coachMsg(d);
-    if (App.alert && performance.now() < App.alert.until) c = { tone: 'warn', icon: '!', text: App.alert.text };
-    else if (App.needTap) c = { tone: 'info', icon: 'J', text: 'Toca la pantalla para escuchar a Josi.' };
+    let c = coachMsg(d); const nowT = performance.now();
+    if (App.alert && nowT < App.alert.until) c = { tone: 'warn', icon: '!', text: App.alert.text };
+    else if (App.listening) c = { tone: 'good', icon: '🎙', text: 'Te escucho…' + (App.heardLive ? ' «' + App.heardLive + '»' : '') };
+    else if (App.micMsg && nowT < App.micMsg.until) c = { tone: 'info', icon: 'J', text: App.micMsg.text };
     else if (App.thinking) c = { tone: 'info', icon: 'J', text: 'Josi está pensando…' };
-    else if (App.listening) c = { tone: 'info', icon: 'J', text: 'Josi te escucha…' };
+    else if (App.josiSays && nowT < App.josiSays.until) c = { tone: 'info', icon: 'J', text: 'Josi: ' + App.josiSays.text };
+    else if (App.needTap) c = { tone: 'info', icon: 'J', text: 'Toca la pantalla para escuchar a Josi.' };
+
     coach.className = 'coach tone-' + c.tone; coach.querySelector('.ci').textContent = c.icon; set('coachTxt', c.text);
   }
   // medidor
@@ -2912,7 +2971,7 @@ function showTripSummary(t, reason) {
   const autoRoute = () => { if (routeEdited) return; const f = $('#sumFrom') ? capName($('#sumFrom').value) : t.fromName, to = $('#sumTo') ? capName($('#sumTo').value) : t.toName; if (f && to) $('#sumRoute').value = `${f} → ${to}`; };
   $('#sumRoute').oninput = () => { routeEdited = true; };
   if ($('#sumFrom')) $('#sumFrom').oninput = autoRoute;
-  if ($('#sumTo')) { $('#sumTo').oninput = autoRoute; if (Josi.on && !t.sim) setTimeout(async () => { await speakAwait('¿Cómo se llama este lugar?'); const h = await listen(5000); if (h && $('#sumTo') && !$('#sumTo').value) { $('#sumTo').value = capName(h); autoRoute(); } }, 4500); }
+  if ($('#sumTo')) { $('#sumTo').oninput = autoRoute; if (Josi.on && !t.sim) setTimeout(async () => { await speakAwait('¿Cómo se llama este lugar?'); const h = await listen(5000, false, true); if (h && $('#sumTo') && !$('#sumTo').value) { $('#sumTo').value = capName(h); autoRoute(); } }, 4500); }
   const saveRoute = () => {
     if ($('#sumFrom') && $('#sumFrom').value.trim()) { const p = Places.learn($('#sumFrom').value, t.startPos[0], t.startPos[1], t.sim); if (p) { t.fromId = p.id; t.fromName = p.name; } }
     if ($('#sumTo') && $('#sumTo').value.trim()) { const p = Places.learn($('#sumTo').value, t.endPos[0], t.endPos[1], t.sim); if (p) { t.toId = p.id; t.toName = p.name; } }
@@ -3181,7 +3240,7 @@ function viewSettings() {
     <div class="f"><span>Clave de Google AI Studio <span class="d">Se guarda solo en esta tablet</span></span><input type="password" id="sAiKey" autocomplete="off" value="${esc(S.aiKey || '')}" placeholder="pega tu clave"></div>
     <div class="f"><span>Modelo <span class="d">Déjalo así salvo que cambie</span></span><input type="text" id="sAiModel" value="${esc(S.aiModel || 'gemini-flash-lite-latest')}"></div>
     <div class="f"><span>Responder al decir «Josi» <span class="d">El micrófono escucha mientras estás conectado (necesita internet y gasta algo más de batería). Siempre puedes usar el botón 🎙.</span></span><input type="checkbox" id="sWakeOn" ${S.wake ? 'checked' : ''}></div>
-    <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="sAiTest">Probar una pregunta</button></div>
+    <div class="actions" style="justify-content:flex-start"><button class="btn" id="sMicTest">Probar micrófono</button><button class="btn primary" id="sAiTest">Probar una pregunta</button></div>
   </section>
   <section class="card form"><div class="card-h">Calibrar el consumo</div>
     <p class="muted" style="margin-top:0">La app calcula la gasolina con el sensor de aire. Para afinarla: llena el tanque, marca «tanque lleno», maneja normal y, en la siguiente carga completa, escribe cuánto entró.</p>
@@ -3248,6 +3307,7 @@ function bindSettings() {
     try { await Voice.azureBlob('Hola, ' + (S.userName || 'Edwin') + '. Soy Josi, con mi voz nueva. ¿Qué te parece?'); Voice.azFails = 0; Josi.speak('Hola, ' + (S.userName || 'Edwin') + '. Soy Josi, con mi voz nueva. ¿Qué te parece?', true); toast('Voz Azure funcionando'); }
     catch (err) { errorBox('La voz de Azure no respondió', (err.name === 'AbortError' ? 'Tiempo de espera agotado.' : err.message) + ' Revisa la clave, la región y el internet. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.'); }
   };
+  $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sAiKey').onchange = e => { S.aiKey = e.target.value.trim(); saveSettings(); };
   $('#sAiModel').onchange = e => { S.aiModel = e.target.value.trim() || 'gemini-flash-lite-latest'; saveSettings(); };
   $('#sWakeOn').onchange = e => { S.wake = e.target.checked; saveSettings(); if (S.wake) Talk.startWake(); else Talk.stopWake(); };
@@ -3318,6 +3378,7 @@ function frame(ts) {
     if (App.trip) updateTripBar();
   }
   Wave.draw();
+  const tb = document.getElementById('talkBtn'); if (tb) tb.classList.toggle('on', !!(Talk.wakeActive || App.listening));
   requestAnimationFrame(frame);
 }
 async function tryAutoConnect() {
@@ -3333,7 +3394,7 @@ function boot() {
   $('#connBtn').onclick = showConnect;
   $('#brandCar').src = CAR_IMG;
   $('#markBtn').onclick = markHazard;
-  $('#talkBtn').onclick = () => { if (!App.connected) { toast('Conecta primero el adaptador o la simulación'); return; } Talk.open(); };
+  $('#talkBtn').onclick = () => { if (!App.connected) { toast('Conecta primero el adaptador o la simulación'); return; } Talk.button(); };
   document.addEventListener('pointerdown', () => { try { Voice.ctx && Voice.ctx.resume(); } catch (e) {} }, true);
   document.addEventListener('pointerdown', () => { if (Josi.pending) { const t = Josi.pending; Josi.pending = null; App.needTap = false; Josi.speak(t, true); } }, true);
   if (navigator.usb) navigator.usb.addEventListener('connect', () => tryAutoConnect());
