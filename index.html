@@ -2133,24 +2133,12 @@ async function conversation() {
   try { await conversationInner(); } finally { setTimeout(() => { Josi.lastSpoke = performance.now() - Josi.gapMs + 30000; }, 150); setTimeout(() => Talk.startWake(), 2500); }
 }
 async function conversationInner() {
-  const sim = App.transport?.kind === 'sim', name = S.userName || 'Edwin';
-  const g = App.gps, here = g ? Places.at(g.lat, g.lon, sim) : null;
-  const pred = here ? Places.predict(here.id, sim) : null;
-  const hi = pick([`¿Qué tal, ${name}?`, `${greetWord()}, ${name}.`, `Hola, ${name}.`]);
+  // Sin preguntar el destino: la navegación la hace Waze/Maps. Josi solo saluda, avisa del motor frío y la meta.
+  // El destino se aprende al terminar el viaje (por GPS y tu memoria de lugares).
+  const name = S.userName || 'Edwin', hi = pick([`¿Qué tal, ${name}?`, `${greetWord()}, ${name}.`, `Hola, ${name}.`]);
   const cold = App.vals.coolant != null && App.vals.coolant < 55 ? 'El motor está frío: salgamos suave, sin pisar a fondo los primeros minutos. ' : '';
-  const goalTxt = cold + `La meta de hoy es ${sayNum(Units.econ(goalKmpl()))} ${S.econ === 'kml' ? 'kilómetros por litro' : Units.econLabel()}.`;
-  if (pred) {
-    const a = await askUser(`${hi} ¿Vamos ${toPhrase(pred.name)}?`, [{ label: 'Sí, ' + pred.name, v: 'yes' }, { label: 'Otro lugar', v: 'no' }, { label: 'Solo manejar', v: 'skip' }],
-      t => isSkip(t) ? 'skip' : isYes(t) ? 'yes' : isNo(t) ? 'no' : (normName(t).length > 2 ? 'name:' + t : null));
-    if (a === 'yes') return setDest(pred.name, goalTxt);
-    if (a && a.startsWith('name:')) return setDest(capName(a.slice(5)), goalTxt);
-    if (a !== 'no') { App.dest = null; return a === 'skip' && Josi.on ? Josi.speak('Perfecto, tú mandas. ' + goalTxt, true) : null; }
-  }
-  const opts = Places.top(sim, here?.id).map(p => ({ label: p.name, v: p.name }));
-  const a2 = await askUser(pred ? '¿A dónde vamos entonces?' : `${hi} ¿A dónde vamos hoy?`, [...opts, { label: 'Solo manejar', v: 'skip' }],
-    t => isSkip(t) ? 'skip' : (normName(t).length > 1 ? capName(t) : null));
-  if (a2 && a2 !== 'skip') return setDest(a2, goalTxt);
-  App.dest = null; if (Josi.on) Josi.speak((a2 === 'skip' ? 'Perfecto, tú mandas. ' : '') + goalTxt, true);
+  App.dest = null;
+  if (Josi.on) Josi.speak(`${hi} ${cold}La meta de hoy es ${sayNum(Units.econ(goalKmpl()))} ${S.econ === 'kml' ? 'kilómetros por litro' : Units.econLabel()}.`, true);
 }
 function setDest(name, goalTxt) {
   App.dest = name; const sim = App.transport?.kind === 'sim', known = Places.byName(name, sim);
