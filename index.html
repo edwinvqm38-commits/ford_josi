@@ -2385,17 +2385,33 @@ async function askAI(q) {
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
     lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx() };
-  const sys = `Eres Josi, el copiloto de voz del auto de ${S.userName || 'Edwin'}. Hablas español latinoamericano natural, cálido y sereno, como una persona tranquila; nada de exageraciones ni frases de robot. Tus respuestas se leen en voz alta mientras él maneja: máximo dos frases cortas, sin listas, sin emojis, sin markdown. Nunca le pidas mirar la pantalla ni escribir. Usa solo los datos del auto que te paso y no inventes cifras. El campo historial resume sus viajes guardados (rutas, horarios, rendimiento, hábitos): úsalo para comparar y dar consejos personales. Si algo puede ser peligroso, prioriza la seguridad. Tu objetivo es ayudarle a manejar seguro y gastar menos gasolina.`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-6), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 200, temperature: 0.7 } };
+  const sys = `Eres Josi, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
+Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
+Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Si pide algo largo (explicar, contar algo), resúmelo en pocas frases y ofrece seguir. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
+Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si el dato no está, dilo sin inventar. Si la charla no necesita esos datos, no los menciones. No tienes internet en vivo: no inventes noticias, clima, precios ni tráfico (eso lo ve en Waze o Google Maps).
+Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar). Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
+Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false}`;
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING', enum: ['ninguna', 'marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio'] }, end: { type: 'BOOLEAN' } }, required: ['say'] } } };
   const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 9000);
   try {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent((S.aiModel || 'gemini-flash-lite-latest').trim())}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: JSON.stringify(body) });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error?.message || ('error ' + r.status));
-    const txt = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join(' ').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
-    if (txt) { AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 12) AI_HIST.shift(); }
-    return txt || null;
+    const raw = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join(' ').trim();
+    let out; try { out = JSON.parse(raw); } catch (e) { out = { say: raw.replace(/[{}"]|say:|action:.*$/g, '') }; }
+    const txt = String(out.say || '').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
+    if (!txt) return null;
+    AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
+    return { say: txt, action: out.action && out.action !== 'ninguna' ? out.action : null, end: !!out.end };
   } catch (e) { logLine('!', 'IA: ' + e.message); return null; } finally { clearTimeout(to); }
+}
+function runAction(a) {
+  try {
+    if (a === 'marcar_bache') markHazard();
+    else if (a === 'iniciar_viaje') { if (!App.trip && App.connected) startTrip(false); }
+    else if (a === 'terminar_viaje') { if (App.trip) finishTrip('manual'); }
+    else if (a === 'silencio') { S.voice = false; saveSettings(); window.drawVB && drawVB(); }
+  } catch (e) { logLine('!', 'Acción: ' + e.message); }
 }
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 const Talk = {
@@ -2409,15 +2425,26 @@ const Talk = {
         o.connect(g); g.connect(c.destination); o.start(t + d); o.stop(t + d + 0.1); });
     } catch (e) {}
   },
-  async answer(q) {
+  async answer(q, depth = 0) {
     logLine('i', 'Tú: ' + q);
-    const local = localAnswer(q); if (local) { await speakAwait(local); return; }
+    // Con clave e internet, todo pasa por la IA para conversar de forma natural.
     if (S.aiKey && navigator.onLine) {
       App.thinking = true; App.dirty = true;
       const r = await askAI(q); App.thinking = false; App.dirty = true;
-      if (r) { await speakAwait(r); return; }
+      if (r) {
+        if (r.action) runAction(r.action);
+        if (r.say && (Josi.on || r.action === 'silencio')) await speakAwait(r.say);
+        // conversación continua: te sigue escuchando unos segundos sin repetir «Josi»
+        if (S.chat !== false && depth < 6 && !r.end && r.action !== 'silencio' && Josi.on) {
+          this.beep && 0; const nx = await listen(6500, true, true);
+          if (nx) return this.answer(nx, depth + 1);
+        }
+        return;
+      }
     }
-    await speakAwait(S.aiKey ? 'No pude conectarme para responder eso. Revisa el internet.' : 'Eso todavía no lo sé. Pregúntame por la meta, el gasto de hoy o del mes, el motor, o pídeme marcar un bache.');
+    // Sin internet o sin clave: respuestas básicas locales
+    const local = localAnswer(q); if (local) { await speakAwait(local); return; }
+    await speakAwait(S.aiKey ? 'No pude conectarme para responder eso. Revisa el internet.' : 'Eso todavía no lo sé. Pon la clave de Google AI Studio en Ajustes y conversamos de lo que quieras. Mientras tanto, pregúntame por la meta, el gasto o el motor.');
   },
   // botón 🎙: el micrófono se abre al instante (dentro del toque), con un tono corto
   async button() {
@@ -3346,6 +3373,7 @@ function viewSettings() {
   <section class="card form"><div class="card-h">Josi · voz</div>
     <p class="muted" style="margin-top:0">Habla poco: un consejo como máximo cada 2 minutos, nunca en plena maniobra. Te felicita al cumplir la meta y resume cada viaje.</p>
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
+    <div class="f"><span>Conversación continua <span class="d">Después de responder, Josi te sigue escuchando unos segundos sin que repitas «Josi»</span></span><input type="checkbox" id="sChat" ${S.chat !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi habla</span><input type="checkbox" id="sVoiceOn" ${Josi.on ? 'checked' : ''}></div>
     <div class="f"><span>Voz <span class="d">Si no ves una voz masculina: Ajustes de Android → Accesibilidad → Texto a voz → Google → Instalar datos de voz → Español, y elige una voz masculina.</span></span><select id="sVoice"><option value="">Automática</option>${Josi.voices().map(v => `<option value="${esc(v.name)}" ${S.voiceName === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select></div>
     <div class="f"><span>Tono <span class="d">Más bajo suena más grave</span></span><input type="range" id="sPitch" min="0.5" max="1.3" step="0.05" value="${S.voicePitch ?? 0.85}"></div>
@@ -3434,13 +3462,14 @@ function bindSettings() {
     catch (err) { errorBox('La voz de Azure no respondió', (err.name === 'AbortError' ? 'Tiempo de espera agotado.' : err.message) + ' Revisa la clave, la región y el internet. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.'); }
   };
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
+  $('#sChat').onchange = e => { S.chat = e.target.checked; saveSettings(); };
   $('#sAiKey').onchange = e => { S.aiKey = e.target.value.trim(); saveSettings(); };
   $('#sAiModel').onchange = e => { S.aiModel = e.target.value.trim() || 'gemini-flash-lite-latest'; saveSettings(); };
   $('#sWakeOn').onchange = e => { S.wake = e.target.checked; saveSettings(); if (S.wake) Talk.startWake(); else Talk.stopWake(); };
   $('#sAiTest').onclick = async () => {
     if (!S.aiKey) { toast('Primero pega la clave de Google AI Studio'); return; }
     const r = await askAI('Preséntate en una frase y dime un consejo corto para gastar menos gasolina en mi auto.');
-    if (r) { Josi.speak(r, true); toast('Gemini respondió: ' + r.slice(0, 90)); } else errorBox('Gemini no respondió', 'Revisa la clave, el nombre del modelo y el internet. Mira el detalle en Diagnóstico → consola. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.');
+    if (r) { Josi.speak(r.say, true); toast('Gemini respondió: ' + r.say.slice(0, 90)); } else errorBox('Gemini no respondió', 'Revisa la clave, el nombre del modelo y el internet. Mira el detalle en Diagnóstico → consola. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.');
   };
   $('#sName').onchange = e => { S.userName = e.target.value.trim() || 'Edwin'; saveSettings(); };
   $('#sListen').onchange = e => { S.voiceListen = e.target.checked; saveSettings(); };
