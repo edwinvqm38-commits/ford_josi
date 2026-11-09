@@ -1070,7 +1070,7 @@ details{border-radius:14px}
 .fs-out{display:none}body.is-fs .fs-in{display:none}body.is-fs .fs-out{display:inline}
 body.is-fs #fsBtn{border-color:rgba(76,180,245,.5);color:var(--accent)}
 /* Visual 2.0 · pantallas bajas en horizontal (celular acostado): todo en una sola vista */
-@media (max-height:560px) and (orientation:landscape){
+@media (max-height:600px) and (orientation:landscape) and (max-width:1000px){
   header.top{flex-wrap:nowrap;gap:6px;padding:4px 10px;align-items:center}
   header.top .brand{display:flex}.brand .car-thumb,.brand small,.brand span{display:none}.brand b{font-size:15px}
   .chips{display:flex}.chips .chip b{display:none}.chips .chip{padding:5px 8px}
@@ -4008,6 +4008,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.3 · 9 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
