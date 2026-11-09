@@ -2112,6 +2112,7 @@ async function listen(ms = 6000, force = false, quiet = false) {
     App.listening = true; App.heardLive = ''; App.dirty = true; SR_ACTIVE = r;
     try { r.start(); } catch (e) { err = e.message; fin(null); return; }
     setTimeout(() => { try { r.stop(); } catch (_) {} }, ms);
+    setTimeout(() => { try { r.abort(); } catch (_) {} fin(last.trim() || null); }, ms + 4000);
   });
 }
 // muestra la pregunta en pantalla con botones y, si se puede, escucha la respuesta hablada
@@ -2372,10 +2373,10 @@ async function askAI(q) {
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx() };
+    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null };
   const sys = `Eres Josi, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
 Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
-Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Si pide algo largo (explicar, contar algo), resúmelo en pocas frases y ofrece seguir. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
+Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Pero si pide expresamente que te extiendas o profundices (cuéntame, explícame, hablemos de…), puedes dar hasta unas ocho frases, en partes naturales, y preguntar si quiere seguir. Si el campo lugar_cercano existe y pregunta por ese sitio, cuéntale lo que sepas con honestidad; no inventes menú, precios, horarios ni reseñas que no conozcas, y dile que eso lo ve en Maps. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
 Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si el dato no está, dilo sin inventar. Si la charla no necesita esos datos, no los menciones. No tienes internet en vivo: no inventes noticias, clima, precios ni tráfico (eso lo ve en Waze o Google Maps).
 Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar). Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
 Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false}`;
@@ -2424,7 +2425,7 @@ const Talk = {
         if (r.say && (Josi.on || r.action === 'silencio')) await speakAwait(r.say);
         // conversación continua: te sigue escuchando unos segundos sin repetir «Josi»
         if (S.chat !== false && depth < 6 && !r.end && r.action !== 'silencio' && Josi.on) {
-          this.beep && 0; const nx = await listen(6500, true, true);
+          this.beep && 0; const nx = await listen(r.say.length > 200 ? 9000 : 6500, true, true);
           if (nx) return this.answer(nx, depth + 1);
         }
         return;
@@ -2492,6 +2493,46 @@ const Talk = {
   },
 };
 
+/* ---------- Lugares cercanos (OpenStreetMap, gratis): restaurantes, cafés, heladerías… ---------- */
+const Poi = {
+  seen: new Set(), lastQ: 0, lastPos: null, busy: false, cur: null, curT: 0,
+  KIND: { restaurant: ['restaurante', 'un'], fast_food: ['local de comida rápida', 'un'], cafe: ['café', 'un'], ice_cream: ['heladería', 'una'], bar: ['bar', 'un'], pub: ['bar', 'un'] },
+  dist(a, b) { const R = 6371e3, r = Math.PI / 180, dx = (b.lon - a.lon) * r * Math.cos(a.lat * r), dy = (b.lat - a.lat) * r; return R * Math.sqrt(dx * dx + dy * dy); },
+  async tick() {
+    if (S.poi === false || !Josi.on || !App.connected || !App.trip || !navigator.onLine || this.busy) return;
+    const g = App.gps, d = App.lastD; if (!g || !d || d.speed < 6 || d.speed > 70) return;
+    const now = performance.now(); if (now - this.lastQ < 40000 || now - Josi.lastSpoke < 90000) return;
+    if (Talk.busy || App.prompt || Voice.speaking || SR_ACTIVE) return;
+    if (this.lastPos && this.dist(this.lastPos, g) < 120) return;
+    this.lastQ = now; this.lastPos = { lat: g.lat, lon: g.lon }; this.busy = true;
+    try {
+      const q = `[out:json][timeout:8];(node(around:70,${g.lat.toFixed(5)},${g.lon.toFixed(5)})[amenity~"^(restaurant|fast_food|cafe|ice_cream|bar|pub)$"][name];way(around:70,${g.lat.toFixed(5)},${g.lon.toFixed(5)})[amenity~"^(restaurant|fast_food|cafe|ice_cream|bar|pub)$"][name];);out center 8;`;
+      const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), { signal: ctrl.signal }).finally(() => clearTimeout(to));
+      const j = await r.json();
+      const c = (j.elements || []).map(e => ({ id: e.type + e.id, name: e.tags.name, k: e.tags.amenity, lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon }))
+        .filter(e => e.lat != null && !this.seen.has(e.id)).sort((a, b) => this.dist(g, a) - this.dist(g, b))[0];
+      if (!c) return;
+      this.seen.add(c.id); const [kind, art] = this.KIND[c.k] || ['local', 'un'];
+      this.cur = { nombre: c.name, tipo: kind }; this.curT = performance.now(); Talk.busy = true;
+      try {
+        const a = await askUser(`Estamos pasando por ${c.name}, ${art} ${kind}. ¿Quieres que te cuente algo?`, [{ label: 'Sí, cuéntame', v: 'yes' }, { label: 'No, gracias', v: 'no' }], t => isYes(t) ? 'yes' : isNo(t) ? 'no' : null);
+        if (a === 'yes') await Talk.answer(`Cuéntame lo que sepas de ${c.name}, ${art} ${kind} que acabamos de pasar.`);
+      } finally { Talk.busy = false; Talk.resumeWake(); }
+    } catch (e) { logLine('!', 'Lugares cercanos: ' + (e.message || e)); } finally { this.busy = false; }
+  },
+};
+setInterval(() => Poi.tick(), 15000);
+
+/* Vigilante: si algo se queda trabado (voz, micrófono, escucha), lo destraba y reanuda la escucha */
+setInterval(() => {
+  const now = performance.now();
+  if (Voice.speaking) { Voice.since = Voice.since || now; if (now - Voice.since > 40000) { Voice.stop(); Voice.since = 0; } } else Voice.since = 0;
+  if (Talk.busy) { Talk.busySince = Talk.busySince || now; if (now - Talk.busySince > 120000) { Talk.busy = false; Talk.busySince = 0; SR_ACTIVE = null; App.listening = false; App.thinking = false; try { speechSynthesis.cancel(); } catch (e) {} } } else Talk.busySince = 0;
+  if (Talk.rec) { Talk.recSince = Talk.recSince || now; if (now - Talk.recSince > 25000) { Talk.stopWake(); Talk.recSince = 0; } } else Talk.recSince = 0;
+  if (Talk.wakeWanted() && !Talk.rec && !Talk.busy && !Voice.speaking && !SR_ACTIVE && !App.prompt) Talk.startWake();
+}, 2500);
+
 /* =====================================================================
    ESTADO DE LA APP
    ===================================================================== */
@@ -2535,7 +2576,7 @@ async function connect(kind, opt = {}) {
   App.connected = true; App.analyzer.reset(); App.vals = {}; App.noData = 0; App.lastD = null; App.moveT = 0; App.offT = 0;
   logLine('i', `Conectado: ${elm.version} · ${elm.protocol} · ${elm.supported.size} sensores${elm.vin ? ' · VIN ' + elm.vin : ''}`);
   setConn(kind === 'sim' ? 'sim' : 'live', kind === 'sim' ? 'Simulación' : t.label);
-  if (kind !== 'sim') { startGps(); Bumps.start(); }
+  if (kind !== 'sim') { startGps(); Bumps.start(); } else if (S.gpsReal !== false) startGps();
   requestWake();
   pollLoop(elm);
   Josi.reset(); App.convPending = true; App.connT = performance.now(); App.dest = null; App.heading = null; App.hdgFix = null;
@@ -2581,7 +2622,7 @@ async function pollLoop(elm) {
   }
 }
 function onSample(s) {
-  if (App.transport?.kind === 'sim') App.gps = App.model.gpsPos();
+  if (App.transport?.kind === 'sim') App.gps = (S.gpsReal !== false && App.realGps && Date.now() - App.realGps.ts < 10000) ? App.realGps : App.model.gpsPos();
   const d = App.analyzer.process(s);
   App.lastD = d;
   updateHeading();
@@ -2648,7 +2689,7 @@ function startGps() {
   if (!featureAllowed('geolocation')) { App.gpsNote = 'El GPS está bloqueado en esta vista.'; return; }
   try {
     App.gpsWatch = navigator.geolocation.watchPosition(
-      p => { App.gps = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }; App.gpsNote = ''; },
+      p => { const g = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }; App.realGps = g; if (App.transport?.kind !== 'sim') App.gps = g; App.gpsNote = ''; },
       e => { App.gpsNote = 'GPS no disponible: ' + e.message; },
       { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   } catch (e) { App.gpsNote = 'GPS no disponible'; }
@@ -3361,6 +3402,8 @@ function viewSettings() {
   <section class="card form"><div class="card-h">Josi · voz</div>
     <p class="muted" style="margin-top:0">Habla poco: un consejo como máximo cada 2 minutos, nunca en plena maniobra. Te felicita al cumplir la meta y resume cada viaje.</p>
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
+    <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Usar mi GPS real en simulación <span class="d">Para probar el mapa y la ruta con tu ubicación verdadera</span></span><input type="checkbox" id="sGpsReal" ${S.gpsReal !== false ? 'checked' : ''}></div>
     <div class="f"><span>Conversación continua <span class="d">Después de responder, Josi te sigue escuchando unos segundos sin que repitas «Josi»</span></span><input type="checkbox" id="sChat" ${S.chat !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi habla</span><input type="checkbox" id="sVoiceOn" ${Josi.on ? 'checked' : ''}></div>
     <div class="f"><span>Voz <span class="d">Si no ves una voz masculina: Ajustes de Android → Accesibilidad → Texto a voz → Google → Instalar datos de voz → Español, y elige una voz masculina.</span></span><select id="sVoice"><option value="">Automática</option>${Josi.voices().map(v => `<option value="${esc(v.name)}" ${S.voiceName === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select></div>
@@ -3450,6 +3493,8 @@ function bindSettings() {
     catch (err) { errorBox('La voz de Azure no respondió', (err.name === 'AbortError' ? 'Tiempo de espera agotado.' : err.message) + ' Revisa la clave, la región y el internet. Si estás en la vista de claude.ai, esto solo funciona desde tu propio enlace.'); }
   };
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
+  $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
+  $('#sGpsReal').onchange = e => { S.gpsReal = e.target.checked; saveSettings(); if (App.transport?.kind === 'sim') { if (S.gpsReal) startGps(); else stopGps(); } };
   $('#sChat').onchange = e => { S.chat = e.target.checked; saveSettings(); };
   $('#sAiKey').onchange = e => { S.aiKey = e.target.value.trim(); saveSettings(); };
   $('#sAiModel').onchange = e => { S.aiModel = e.target.value.trim() || 'gemini-flash-lite-latest'; saveSettings(); };
