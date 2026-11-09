@@ -2384,8 +2384,9 @@ const Memory = {
 /* ---------- Uso de Gemini (para avisarte antes de toparte con el límite gratuito) ---------- */
 const UKEY = 'ecodrive.usage.v1';
 const Usage = {
-  d: store.get(UKEY, { day: '', req: 0, lim: 0, live: 0 }), ts: [],
-  roll() { const k = new Date().toLocaleDateString('en-CA'); if (this.d.day !== k) this.d = { day: k, req: 0, lim: 0, live: 0 }; },
+  d: store.get(UKEY, { day: '', req: 0, lim: 0, live: 0, srch: 0 }), ts: [],
+  roll() { const k = new Date().toLocaleDateString('en-CA'); if (this.d.day !== k) this.d = { day: k, req: 0, lim: 0, live: 0, srch: 0 }; if (this.d.srch == null) this.d.srch = 0; },
+  srch() { this.roll(); this.d.srch++; this.save(); },
   save() { store.set(UKEY, this.d); },
   req() { this.roll(); this.d.req++; this.ts.push(Date.now()); this.save(); },
   limit() { this.roll(); this.d.lim++; this.save(); },
@@ -2399,7 +2400,7 @@ function buildCtx() {
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx() };
+    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx(), ubicacion: (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })() };
   return ctx;
 }
 const AI_HIST = [];
@@ -2412,11 +2413,11 @@ async function askAI(q) {
   const sys = `Eres Josi, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
 Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
 Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Pero si pide expresamente que te extiendas o profundices (cuéntame, explícame, hablemos de…), puedes dar hasta unas ocho frases, en partes naturales, y preguntar si quiere seguir. Si el campo lugar_cercano existe y pregunta por ese sitio, cuéntale lo que sepas con honestidad; no inventes menú, precios, horarios ni reseñas que no conozcas, y dile que eso lo ve en Maps. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
-Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si el dato no está, dilo sin inventar. Si la charla no necesita esos datos, no los menciones. No tienes internet en vivo: no inventes noticias, clima, precios ni tráfico (eso lo ve en Waze o Google Maps).
+Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si el dato no está, dilo sin inventar. Si la charla no necesita esos datos, no los menciones. Tienes búsqueda en internet, pero la hace la app por ti: si la pregunta necesita información actual o del mundo real (noticias, clima, tráfico, precios, tipo de cambio, resultados deportivos, horarios, datos de un lugar o negocio, algo de hoy o de ahora), pon "buscar": true y en "say" una frase muy corta como "Déjame ver eso" SIN dar el dato ni inventarlo; la app buscará y responderá. Para lo demás, "buscar": false.
 Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar). Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
 Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
-Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"recordar":"","olvidar":""}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' } }, required: ['say'] } } };
+Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":""}`;
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -2450,13 +2451,51 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: 'sin texto' }; return null; }
   AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
   const ACT = ['marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio'];
-  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '' };
+  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '' };
+}
+const NEEDS_WEB = /\b(noticias?|clima|temperatura|llover|lluvia|pronostico|pronóstico|tr[aá]fico|precio|cu[aá]nto (cuesta|vale|est[aá])|tipo de cambio|d[oó]lar|resultado|quien gan[oó]|quién gan[oó]|partido|horario|est[aá] abiert[oa]|abre hoy|cierra|[uú]ltima hora|actualidad|restaurantes? cerca|qu[eé] hay cerca|cerca de aqu[ií]|gasolina (m[aá]s )?barata|grifo)\b/i;
+async function askWeb(q) {
+  if (!S.aiKey) return null;
+  if (performance.now() < (App.aiCoolUntil || 0)) { App.aiErr = { status: 429, kind: 'limite', wait: Math.ceil((App.aiCoolUntil - performance.now()) / 1000), detail: 'en pausa por el límite gratuito' }; return null; }
+  App.aiErr = null; Usage.req(); Usage.srch();
+  const name = S.userName || 'Edwin', loc = buildCtx().ubicacion, ahora = new Date().toLocaleString(LOC, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const sys = `Eres Josi, el copiloto de voz del auto de ${name}. Hablas español latinoamericano natural, sereno y cálido. Responde usando la búsqueda en internet. Tu respuesta se lee en voz alta mientras maneja: de dos a cuatro frases cortas, sin listas, sin markdown, sin emojis y sin leer direcciones web. Da primero el dato importante y, si ayuda, di de pasada de dónde sale (por ejemplo "según el servicio meteorológico"). Si no encuentras algo confiable, dilo sin inventar. Ahora es ${ahora}.` +
+    (loc ? ` Ubicación aproximada del conductor (latitud ${loc.lat}, longitud ${loc.lon}): úsala para "cerca", clima, tráfico o precios locales.` : ' No sabes dónde está; si hace falta, pregúntale la ciudad.');
+  const bodyTxt = JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-6), { role: 'user', parts: [{ text: q }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 700, temperature: 0.4 } });
+  const models = [...new Set([(S.aiSearchModel || 'gemini-2.5-flash-lite').trim(), 'gemini-2.5-flash', (S.aiModel || 'gemini-flash-lite-latest').trim()])];
+  let res = null;
+  for (let i = 0; i < models.length; i++) {
+    res = await geminiCall(models[i], bodyTxt, 20000);
+    if (!res.ok && (res.status === 0 || res.status >= 500)) { await new Promise(r => setTimeout(r, 900)); res = await geminiCall(models[i], bodyTxt, 15000); }
+    if (res.ok) break; if (res.status === 401 || res.status === 403) break;
+    logLine('!', `Búsqueda (${models[i]}): ${res.status || 'sin respuesta'} ${res.j?.error?.message || res.msg || ''}`.trim());
+  }
+  if (!res.ok) {
+    const st = res.status, m = res.j?.error?.message || res.msg || ''; let wait = 0;
+    if (st === 429) { const ri = (res.j?.error?.details || []).find(d => /RetryInfo/.test(d['@type'] || '')); wait = Math.min(120, Math.max(10, ri?.retryDelay ? parseFloat(ri.retryDelay) || 60 : 60)); App.aiCoolUntil = performance.now() + wait * 1000; Usage.limit(); }
+    App.aiErr = { wait, status: st, kind: st === 429 ? 'limite' : (st === 401 || st === 403 || /API key/i.test(m)) ? 'clave' : st === 0 ? 'red' : st >= 500 ? 'google' : 'busqueda', detail: m };
+    return null;
+  }
+  const cand = res.j?.candidates?.[0];
+  const txt = (cand?.content?.parts || []).map(p => p.text || '').join(' ').replace(/https?:\/\/\S+/g, '').replace(/\[\d+(?:\s*,\s*\d+)*\]/g, '').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
+  if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: cand?.finishReason || 'respuesta vacía' }; return null; }
+  AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
+  return txt;
+}
+async function geminiCall(m, bodyTxt, ms) {
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: bodyTxt });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    return { ok: r.ok, status: r.status, j };
+  } catch (e) { return { ok: false, status: 0, msg: e.name === 'AbortError' ? 'tardó demasiado' : (e.message || 'sin conexión') }; }
+  finally { clearTimeout(to); }
 }
 function aiErrSpeech() {
   const e = App.aiErr; if (!e) return 'No pude responder eso. Inténtalo otra vez.';
   return { limite: `Llegué al límite gratuito de Gemini por ahora. Espera ${e.wait && e.wait <= 90 ? 'unos ' + e.wait + ' segundos' : 'un par de minutos'} y seguimos.`,
     clave: 'Gemini no aceptó la clave. Revísala en Ajustes.', red: 'Se me cortó la conexión con Gemini. Inténtalo otra vez en unos segundos.',
-    google: 'Gemini está con problemas ahora mismo. Inténtalo en un momento.', vacio: 'No supe cómo responder eso. ¿Me lo dices de otra forma?', peticion: 'Gemini rechazó mi pregunta. Mira el detalle en Diagnóstico.' }[e.kind];
+    google: 'Gemini está con problemas ahora mismo. Inténtalo en un momento.', busqueda: 'No pude buscar eso en internet ahora. Puede que la búsqueda no esté disponible con tu plan gratuito.', vacio: 'No supe cómo responder eso. ¿Me lo dices de otra forma?', peticion: 'Gemini rechazó mi pregunta. Mira el detalle en Diagnóstico.' }[e.kind];
 }
 function runAction(a) {
   try {
@@ -2470,11 +2509,11 @@ function runAction(a) {
 const i16b64 = a => { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let t = ''; for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(t); };
 const Live = {
   MODELS: ['gemini-2.5-flash-native-audio-latest', 'gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-3.1-flash-live-preview'],
-  on: false, ready: false, want: false, closing: false, renewing: false, ws: null, ctx: null, stream: null, node: null, zero: null, gain: null, analyser: null, model: null,
+  useSearch: true, on: false, ready: false, want: false, closing: false, renewing: false, ws: null, ctx: null, stream: null, node: null, zero: null, gain: null, analyser: null, model: null,
   nextT: 0, srcs: new Set(), aiSpeaking: false, tr: [], uTx: '', mTx: '', micLevel: 0, last: 0, t0: 0, tries: 0, q: Promise.resolve(), pend: new Float32Array(0), rate: 48000, idle: null, prevA: null, prevB: null,
   system() {
     const name = S.userName || 'Edwin', mem = Memory.ctx(), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
-    return `Eres Josi, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. No tienes internet en vivo: no inventes noticias, clima, tráfico, precios ni datos de lugares que no conozcas (eso lo ve en Waze o Maps).
+    return `Eres Josi, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. Tienes búsqueda en Google: úsala cuando pregunte por noticias, clima, tráfico, precios, resultados, horarios o datos de un lugar o negocio, y no inventes nada de eso. ${(() => { const l = buildCtx().ubicacion; return l ? 'Ubicación aproximada del conductor: latitud ' + l.lat + ', longitud ' + l.lon + '.' : 'No sabes dónde está; si hace falta, pregúntale la ciudad.'; })()} Ahora es ${new Date().toLocaleString(LOC, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.
 Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
 ${mem.length ? 'Lo que recuerdas de él: ' + mem.join('; ') + '.' : ''}
 ${rec ? 'Conversación reciente (se renovó la conexión; continúa sin saludar de nuevo):\n' + rec : ''}
@@ -2516,8 +2555,17 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   async open() {
     const list = [...new Set([S.liveModel, ...this.MODELS].filter(Boolean))]; let last;
     for (const m of list) {
-      try { await this.connect(m); this.tries = 0; return; }
-      catch (e) { last = e; logLine('!', `Voz en vivo (${m}): ${e.message}`); if (/quota|exhaust|429|api key|permission|403|401/i.test(e.message)) break; }
+      let stop = false;
+      for (const srch of [true, false]) {
+        this.useSearch = srch;
+        try { await this.connect(m); this.tries = 0; return; }
+        catch (e) {
+          last = e; logLine('!', `Voz en vivo (${m}${srch ? ' + búsqueda' : ''}): ${e.message}`);
+          if (/quota|exhaust|429|api key|permission|403|401/i.test(e.message)) { stop = true; break; }
+          if (!srch || !/tool|search|function|unsupported|invalid|argument|1007/i.test(e.message)) break;
+        }
+      }
+      if (stop) break;
     }
     throw last || new Error('sin conexión');
   },
@@ -2528,7 +2576,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       const to = setTimeout(() => { try { ws.close(); } catch (e) {} done(false, new Error('tardó demasiado en conectar')); }, 10000);
       this.ws = ws; this.ready = false;
       ws.onopen = () => ws.send(JSON.stringify({ setup: { model: 'models/' + model, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: S.liveVoice || 'Charon' } } } },
-        systemInstruction: { parts: [{ text: this.system() }] }, tools: this.decls(), inputAudioTranscription: {}, outputAudioTranscription: {} } }));
+        systemInstruction: { parts: [{ text: this.system() }] }, tools: (this.useSearch && S.search !== false ? [{ googleSearch: {} }] : []).concat(this.decls()), inputAudioTranscription: {}, outputAudioTranscription: {} } }));
       ws.onmessage = ev => { this.q = this.q.then(async () => {
         let m; try { m = JSON.parse(typeof ev.data === 'string' ? ev.data : await ev.data.text()); } catch (e) { return; }
         if (ws !== this.ws) return;
@@ -2666,7 +2714,15 @@ const Talk = {
       if (r) {
         if (r.action) runAction(r.action);
         if (r.mem) Memory.add(r.mem); if (r.forget) Memory.forget(r.forget);
-        if (r.say && (Josi.on || r.action === 'silencio')) await speakAwait(r.say);
+        let say = r.say;
+        if ((r.buscar || NEEDS_WEB.test(q)) && S.search !== false && !r.action) {
+          const filler = Josi.on ? speakAwait(r.buscar && r.say ? r.say : 'Déjame ver eso.') : Promise.resolve();
+          App.thinking = true; App.dirty = true;
+          const web = await askWeb(q); App.thinking = false; App.dirty = true; await filler;
+          if (web) say = web; else { say = aiErrSpeech(); r.end = true; micNote('Búsqueda: ' + (App.aiErr ? (App.aiErr.status || 'sin respuesta') + ' ' + App.aiErr.detail : 'sin respuesta'), 7000); }
+          r.say = say;
+        }
+        if (say && (Josi.on || r.action === 'silencio')) await speakAwait(say);
         // conversación continua: te sigue escuchando unos segundos sin repetir «Josi»
         if (S.chat !== false && depth < 6 && !r.end && r.action !== 'silencio' && Josi.on && Usage.rpm() < 10) {
           this.beep && 0; const nx = await listen(r.say.length > 200 ? 9000 : 6500, true, true);
@@ -3650,6 +3706,7 @@ function viewSettings() {
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
     <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
     <div class="f"><span>Usar mi GPS real en simulación <span class="d">Para probar el mapa y la ruta con tu ubicación verdadera</span></span><input type="checkbox" id="sGpsReal" ${S.gpsReal !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Buscar en internet <span class="d">Josi busca noticias, clima, tráfico, precios y datos de lugares cuando se lo preguntas (usa la búsqueda de Google dentro del plan gratuito, con tope diario)</span></span><input type="checkbox" id="sSearch" ${S.search !== false ? 'checked' : ''}></div>
     <div class="f"><span>Conversación continua <span class="d">Después de responder, Josi te sigue escuchando unos segundos sin que repitas «Josi»</span></span><input type="checkbox" id="sChat" ${S.chat !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi habla</span><input type="checkbox" id="sVoiceOn" ${Josi.on ? 'checked' : ''}></div>
     <div class="f"><span>Voz <span class="d">Si no ves una voz masculina: Ajustes de Android → Accesibilidad → Texto a voz → Google → Instalar datos de voz → Español, y elige una voz masculina.</span></span><select id="sVoice"><option value="">Automática</option>${Josi.voices().map(v => `<option value="${esc(v.name)}" ${S.voiceName === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select></div>
@@ -3687,6 +3744,7 @@ function viewSettings() {
   </section>
   <section class="card form"><div class="card-h">Uso de Gemini hoy</div>
     ${(Usage.roll(), '')}<div class="f"><span>Consultas de texto</span><b>${Usage.d.req}</b></div>
+    <div class="f"><span>Búsquedas en internet</span><b>${Usage.d.srch}</b></div>
     <div class="f"><span>Voz en vivo</span><b>${Math.round(Usage.d.live / 60)} min</b></div>
     <div class="f"><span>Avisos de límite</span><b>${Usage.d.lim}</b></div>
     <p class="muted">Google define los límites gratuitos y los cambia; la app no los conoce con exactitud. Te avisa con voz cuando Gemini dice que llegaste al límite y espera el tiempo que Google indique. Puedes ver tu uso real en <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener">aistudio.google.com/usage</a>.</p>
@@ -3765,6 +3823,7 @@ function bindSettings() {
   document.querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { Memory.list.splice(+b.dataset.mdel, 1); Memory.save(); re(); });
   $('#memAdd').onclick = () => { if (Memory.add($('#memNew').value)) { toast('Anotado'); re(); } else toast('No pude guardar eso'); };
   if ($('#memClear')) $('#memClear').onclick = () => { if (confirm('¿Borrar todo lo que Josi recuerda?')) { Memory.list = []; Memory.save(); re(); } };
+  $('#sSearch').onchange = e => { S.search = e.target.checked; saveSettings(); };
   $('#sChat').onchange = e => { S.chat = e.target.checked; saveSettings(); };
   $('#sAiKey').onchange = e => { S.aiKey = e.target.value.trim(); saveSettings(); };
   $('#sAiModel').onchange = e => { S.aiModel = e.target.value.trim() || 'gemini-flash-lite-latest'; saveSettings(); };
