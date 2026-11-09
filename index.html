@@ -1019,6 +1019,31 @@ details{border-radius:14px}
   nav.tabs button{min-height:54px;font-size:11.5px}
   main{padding-left:calc(10px + env(safe-area-inset-left));padding-right:calc(10px + env(safe-area-inset-right))}
 }
+
+/* Visual 2.0 · celular: todo en una sola pantalla, sin deslizar */
+@media (max-width:640px){
+  header.top{flex-wrap:wrap;gap:6px}
+  .brand,.chips,#fsBtn{display:none}
+  .hdr-sp{display:block;flex:1}
+  #tripBtn{font-size:0;width:52px;padding:0;margin-left:0;display:grid;place-items:center}#tripBtn svg.ic{margin:0;width:22px;height:22px}
+  #talkBtn,#voiceBtn,#markBtn{width:44px}
+  header.top{padding-left:10px;padding-right:10px}
+  #connBtn{padding:4px 10px;gap:6px;min-width:0}#connTxt{font-size:13px;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #tripClock{display:none}.hdr-sp{display:none}
+  header.top{justify-content:space-between}
+  main.fit{overflow:hidden;display:flex;flex-direction:column;padding-bottom:8px}
+  main.fit .live,main.fit .live.has-sim{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto auto;grid-template-areas:"score" "gauge" "tiles"!important;gap:8px}
+  .effort-card,.sim-panel,.trip-card{display:none!important}
+  .score-card{min-height:0}.josi-stage{min-height:0}
+  .josi-car{height:34%}
+  .josi-foot{padding-top:4px;margin-top:2px}.josi-foot .mring{width:40px;height:40px}.josi-foot b{font-size:16px}
+  .gauge-card{padding:8px 12px}.gauge-card .card-h,.gauge-sub{display:none}
+  .gauge-card svg{flex:none;min-height:0;height:min(22vh,170px)}
+  .tiles{grid-template-columns:1fr 1fr;grid-template-rows:auto;gap:8px}
+  .tiles .tile:nth-child(n+3){display:none}
+  .tile{min-height:60px;padding:6px 12px}.tile .v{font-size:26px}
+  .coach{margin:0 0 8px;min-height:36px}
+}
 /* modo noche automático: más tenue y cálido, menos brillo */
 body.night{--accent:#6fb8e6;--ink:#dde6ee;--ink2:#a2b0be;filter:brightness(.82) saturate(.9)}
 body.night .josi-car,body.night .hero img{filter:drop-shadow(0 10px 14px rgba(0,0,0,.65))}
@@ -2415,9 +2440,25 @@ function dayStats(from) {
 function startOf(unit) { const d = new Date(); d.setHours(0, 0, 0, 0); if (unit === 'month') d.setDate(1); return d.getTime(); }
 const spokenMoney = v => `${sayNum(v, 2)} ${S.currency === 'S/' ? 'soles' : S.currency === '$' ? 'dólares' : S.currency}`;
 const spokenEcon = k => `${sayNum(Units.econ(k))} ${S.econ === 'kml' ? 'kilómetros por litro' : Units.econLabel()}`;
+function navTarget(x) {
+  const t = String(x).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/en vivo|en_vivo|inicio|principal|vivo/.test(t)) return 'live';
+  if (/viaje/.test(t)) return 'trips';
+  if (/ruta|mapa/.test(t)) return 'routes';
+  if (/diagnos|falla|codigo/.test(t)) return 'diag';
+  if (/ajuste|config/.test(t)) return 'settings';
+  return null;
+}
+const NAV_NAMES = { live: 'En vivo', trips: 'Viajes', routes: 'Rutas', diag: 'Diagnóstico', settings: 'Ajustes' };
 function localAnswer(q) {
   const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''), name = S.userName || 'Edwin', tr = App.trip, V = App.vals;
   if (/^(estas ahi|estas|hola|oye)?\s*$/.test(t.trim())) return null;
+  if (/(muestra|muestrame|abre|abreme|ve a|ir a|vamos a|cambia|cambiame|llevame|pasa a|quiero ver|ponme)/.test(t) && /(pestana|pantalla|en vivo|inicio|principal|viajes|rutas|mapa|diagnostico|ajustes|configuracion)/.test(t)) {
+    const nt = navTarget(t.replace(/pestana|pantalla/g, ''));
+    if (nt) { setTab(nt); return `Listo, te muestro ${NAV_NAMES[nt]}.`; }
+    return 'Puedo mostrarte En vivo, Viajes, Rutas, Diagnóstico o Ajustes. ¿Cuál quieres ver?';
+  }
+  if (/que (puedo|quiero) ver|que pantallas|que pestanas/.test(t)) return 'Puedo mostrarte En vivo, Viajes, Rutas, Diagnóstico o Ajustes. ¿Cuál quieres ver?';
   if (/silencio|callate|calla|no hables/.test(t)) { S.voice = false; saveSettings(); window.drawVB && drawVB(); return 'Listo, me quedo en silencio. Tócame el parlante cuando quieras que vuelva.'; }
   if (/marca|bache|hueco|rompemuelle|giba|lomo/.test(t)) { markHazard(); return 'Marcado. La próxima vez te aviso antes de llegar.'; }
   if (/meta|como voy|como vamos/.test(t)) {
@@ -2682,7 +2723,7 @@ const Live = {
   system() {
     const name = S.userName || 'Edwin', mem = Memory.ctx(), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
     return `Eres ${botName()}, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. Tienes búsqueda en Google: úsala cuando pregunte por noticias, clima, tráfico, precios, resultados, horarios o datos de un lugar o negocio, y no inventes nada de eso. ${(() => { const l = buildCtx().ubicacion; return l ? 'Ubicación aproximada del conductor: latitud ' + l.lat + ', longitud ' + l.lon + '.' : 'No sabes dónde está; si hace falta, pregúntale la ciudad.'; })()} Ahora es ${new Date().toLocaleString(LOC, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.
-Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
+Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Puedes cambiar la pantalla con mostrar_pantalla (en_vivo, viajes, rutas, diagnostico, ajustes) cuando lo pida; si pide cambiar de pestaña sin decir cuál, pregúntale en una frase qué quiere ver. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
 ${companyRules(true)}
 ${People.list.length ? 'Personas que conoces: ' + People.list.map(p => p.name + (p.rel ? ' (' + p.rel + ')' : '') + (p.nota ? ', ' + p.nota : '')).join('; ') + '.' : 'Todavía no conoces a nadie más que a él.'}
 ${mem.length ? 'Lo que recuerdas de él: ' + mem.join('; ') + '.' : ''}
@@ -2692,6 +2733,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   decls() {
     return [{ functionDeclarations: [
       { name: 'datos_del_auto', description: 'Datos en vivo del auto, del viaje en curso, del gasto de hoy y del mes, rutas y hábitos de manejo del conductor.' },
+      { name: 'mostrar_pantalla', description: 'Cambia la pantalla de la app que ve el conductor.', parameters: { type: 'OBJECT', properties: { pantalla: { type: 'STRING', description: 'en_vivo, viajes, rutas, diagnostico o ajustes' } }, required: ['pantalla'] } },
       { name: 'marcar_bache', description: 'Marca un bache, hueco o rompemuelle en la posición actual.' },
       { name: 'iniciar_viaje', description: 'Inicia el registro de un viaje.' },
       { name: 'terminar_viaje', description: 'Termina y guarda el viaje en curso.' },
@@ -2812,6 +2854,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   },
   runTool(n, a) {
     if (n === 'datos_del_auto') return buildCtx();
+    if (n === 'mostrar_pantalla') { const t = navTarget(String(a.pantalla || '')); if (!t) return 'pantalla desconocida; opciones: en_vivo, viajes, rutas, diagnostico, ajustes'; setTab(t); return 'mostrando ' + t; }
     if (n === 'marcar_bache') { runAction('marcar_bache'); return 'marcado'; }
     if (n === 'iniciar_viaje') { if (!App.connected) return 'no hay conexión con el auto'; if (App.trip) return 'ya hay un viaje en curso'; runAction('iniciar_viaje'); return 'iniciado'; }
     if (n === 'terminar_viaje') { if (!App.trip) return 'no hay un viaje en curso'; runAction('terminar_viaje'); return 'terminado'; }
