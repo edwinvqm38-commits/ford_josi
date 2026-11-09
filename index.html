@@ -1900,6 +1900,7 @@ const Josi = {
     return vs.find(v => /male|hombre|masculin|jorge|diego|pablo|carlos|enrique|andr[eé]s|alvaro|raul|x-esd|x-eed|x-ana-?m|es-us-x-esf/i.test(v.name) && !/female|mujer|femenin/i.test(v.name)) || vs.find(v => /es-(US|MX|419|PE)/i.test(v.lang)) || vs[0];
   },
   speak(text, force) {
+    if (Live.on && Live.ready) return Live.say(text);
     if (App.prompt && !force) return false;
     if (!this.on && !force) return false;
     const h = { onend: null }, inner = { onend: () => { if (!Talk.busy) Talk.resumeWake(); h.onend && h.onend(); } };
@@ -2215,6 +2216,7 @@ const Wave = {
   },
   level() {
     let amp = 0;
+    if (Live.on && !Voice.speaking) { Voice.level += (Live.micLevel - Voice.level) * 0.3; return Voice.level; }
     if (Voice.speaking && Voice.mode === 'azure' && Voice.analyser) {
       Voice.analyser.getByteTimeDomainData(Voice.buf); let pk = 0; for (const v of Voice.buf) pk = Math.max(pk, Math.abs(v - 128));
       Voice.level += (Math.min(1, pk / 60) - Voice.level) * 0.35; amp = Voice.level;
@@ -2239,6 +2241,7 @@ const Wave = {
     let tgt, spin, label;
     if (speaking) { tgt = [92, 196, 255]; spin = 0.7; label = 'Hablando'; }
     else if (listening) { tgt = [88, 220, 160]; spin = 0.45; label = 'Te escucho'; }
+    else if (Live.on) { tgt = Live.ready ? [88, 220, 160] : [158, 136, 255]; spin = Live.ready ? 0.4 : 1.9; label = Live.ready ? 'En vivo · habla' : 'Conectando…'; }
     else if (thinking) { tgt = [158, 136, 255]; spin = 1.9; label = 'Pensando'; }
     else if (Talk.wakeActive) { tgt = [76, 180, 245]; spin = 0.22; label = 'Atento · di «Josi»'; }
     else { tgt = [70, 150, 205]; spin = 0.16; label = App.connected ? 'Toca para hablar' : 'En reposo'; }
@@ -2363,24 +2366,56 @@ function histAnswer(t) {
   }
   return null;
 }
-const AI_HIST = [];
-async function askAI(q) {
-  if (!S.aiKey) return null;
-  App.aiErr = null;
+/* ---------- Memoria de Josi (se queda entre días, solo en este aparato) ---------- */
+const MKEY = 'ecodrive.memory.v1';
+const Memory = {
+  list: store.get(MKEY, []),
+  save() { store.set(MKEY, this.list); },
+  bad(t) { return /(\d[\s-]?){11,}|contrase|password|\bpin\b|\bcvv\b|tarjeta|\btoken\b|clave (de|del)/i.test(t); },
+  add(text) {
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 160); if (text.length < 4 || this.bad(text)) return false;
+    const k = normName(text); if (this.list.some(m => normName(m.t) === k)) return true;
+    this.list.unshift({ t: text, ts: Date.now() }); this.list.length = Math.min(this.list.length, 40); this.save(); return true;
+  },
+  forget(q) { const k = normName(q); if (k.length < 3) return 0; const n = this.list.length; this.list = this.list.filter(m => !normName(m.t).includes(k)); this.save(); return n - this.list.length; },
+  ctx() { return this.list.slice(0, 25).map(m => m.t); },
+};
+/* ---------- Uso de Gemini (para avisarte antes de toparte con el límite gratuito) ---------- */
+const UKEY = 'ecodrive.usage.v1';
+const Usage = {
+  d: store.get(UKEY, { day: '', req: 0, lim: 0, live: 0 }), ts: [],
+  roll() { const k = new Date().toLocaleDateString('en-CA'); if (this.d.day !== k) this.d = { day: k, req: 0, lim: 0, live: 0 }; },
+  save() { store.set(UKEY, this.d); },
+  req() { this.roll(); this.d.req++; this.ts.push(Date.now()); this.save(); },
+  limit() { this.roll(); this.d.lim++; this.save(); },
+  liveSec(x) { this.roll(); this.d.live += x; this.save(); },
+  rpm() { const n = Date.now(); this.ts = this.ts.filter(t => n - t < 60000); return this.ts.length; },
+};
+function buildCtx() {
   const tr = App.trip, V = App.vals, d = App.lastD, today = dayStats(startOf('day')), month = dayStats(startOf('month'));
   const ctx = { hora: new Date().toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }), conductor: S.userName || 'Edwin', auto: 'Ford Fusion SE 2018, motor 2.0 EcoBoost turbo',
     unidad: Units.econLabel(), moneda: S.currency, meta: +Units.econ(goalKmpl()).toFixed(1), promedio_habitual: +Units.econ(S.baseKmpl || 6.5).toFixed(1),
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null };
+    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx() };
+  return ctx;
+}
+const AI_HIST = [];
+async function askAI(q) {
+  if (!S.aiKey) return null;
+  App.aiErr = null;
+  if (performance.now() < (App.aiCoolUntil || 0)) { App.aiErr = { status: 429, kind: 'limite', wait: Math.ceil((App.aiCoolUntil - performance.now()) / 1000), detail: 'en pausa por el límite gratuito' }; return null; }
+  Usage.req();
+  const ctx = buildCtx();
   const sys = `Eres Josi, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
 Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
 Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Pero si pide expresamente que te extiendas o profundices (cuéntame, explícame, hablemos de…), puedes dar hasta unas ocho frases, en partes naturales, y preguntar si quiere seguir. Si el campo lugar_cercano existe y pregunta por ese sitio, cuéntale lo que sepas con honestidad; no inventes menú, precios, horarios ni reseñas que no conozcas, y dile que eso lo ve en Maps. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
 Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si el dato no está, dilo sin inventar. Si la charla no necesita esos datos, no los menciones. No tienes internet en vivo: no inventes noticias, clima, precios ni tráfico (eso lo ve en Waze o Google Maps).
 Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar). Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
-Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' } }, required: ['say'] } } };
+Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
+Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"recordar":"","olvidar":""}`;
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -2402,7 +2437,8 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   }
   if (!res.ok) {
     const st = res.status, m = res.j?.error?.message || res.msg || '';
-    App.aiErr = { status: st, kind: st === 429 ? 'limite' : (st === 401 || st === 403 || /API key/i.test(m)) ? 'clave' : st === 0 ? 'red' : st >= 500 ? 'google' : 'peticion', detail: m };
+    let wait = 0; if (st === 429) { const ri = (res.j?.error?.details || []).find(d => /RetryInfo/.test(d['@type'] || '')); wait = Math.min(120, Math.max(10, ri?.retryDelay ? parseFloat(ri.retryDelay) || 60 : 60)); App.aiCoolUntil = performance.now() + wait * 1000; Usage.limit(); }
+    App.aiErr = { wait, status: st, kind: st === 429 ? 'limite' : (st === 401 || st === 403 || /API key/i.test(m)) ? 'clave' : st === 0 ? 'red' : st >= 500 ? 'google' : 'peticion', detail: m };
     return null;
   }
   const cand = res.j?.candidates?.[0];
@@ -2413,11 +2449,11 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: 'sin texto' }; return null; }
   AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
   const ACT = ['marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio'];
-  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end };
+  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '' };
 }
 function aiErrSpeech() {
   const e = App.aiErr; if (!e) return 'No pude responder eso. Inténtalo otra vez.';
-  return { limite: 'Llegué al límite gratuito de Gemini por ahora. Espera un minuto y seguimos.',
+  return { limite: `Llegué al límite gratuito de Gemini por ahora. Espera ${e.wait && e.wait <= 90 ? 'unos ' + e.wait + ' segundos' : 'un par de minutos'} y seguimos.`,
     clave: 'Gemini no aceptó la clave. Revísala en Ajustes.', red: 'Se me cortó la conexión con Gemini. Inténtalo otra vez en unos segundos.',
     google: 'Gemini está con problemas ahora mismo. Inténtalo en un momento.', vacio: 'No supe cómo responder eso. ¿Me lo dices de otra forma?', peticion: 'Gemini rechazó mi pregunta. Mira el detalle en Diagnóstico.' }[e.kind];
 }
@@ -2429,6 +2465,185 @@ function runAction(a) {
     else if (a === 'silencio') { S.voice = false; saveSettings(); window.drawVB && drawVB(); }
   } catch (e) { logLine('!', 'Acción: ' + e.message); }
 }
+/* ---------- Voz en vivo (Gemini Live): hablas y responde con voz, sin pausas y se le puede interrumpir ---------- */
+const i16b64 = a => { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let t = ''; for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(t); };
+const Live = {
+  MODELS: ['gemini-2.5-flash-native-audio-latest', 'gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-3.1-flash-live-preview'],
+  on: false, ready: false, want: false, closing: false, renewing: false, ws: null, ctx: null, stream: null, node: null, zero: null, gain: null, analyser: null, model: null,
+  nextT: 0, srcs: new Set(), aiSpeaking: false, tr: [], uTx: '', mTx: '', micLevel: 0, last: 0, t0: 0, tries: 0, q: Promise.resolve(), pend: new Float32Array(0), rate: 48000, idle: null, prevA: null, prevB: null,
+  system() {
+    const name = S.userName || 'Edwin', mem = Memory.ctx(), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
+    return `Eres Josi, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. No tienes internet en vivo: no inventes noticias, clima, tráfico, precios ni datos de lugares que no conozcas (eso lo ve en Waze o Maps).
+Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
+${mem.length ? 'Lo que recuerdas de él: ' + mem.join('; ') + '.' : ''}
+${rec ? 'Conversación reciente (se renovó la conexión; continúa sin saludar de nuevo):\n' + rec : ''}
+A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras, muy breve, sin leer los corchetes.`;
+  },
+  decls() {
+    return [{ functionDeclarations: [
+      { name: 'datos_del_auto', description: 'Datos en vivo del auto, del viaje en curso, del gasto de hoy y del mes, rutas y hábitos de manejo del conductor.' },
+      { name: 'marcar_bache', description: 'Marca un bache, hueco o rompemuelle en la posición actual.' },
+      { name: 'iniciar_viaje', description: 'Inicia el registro de un viaje.' },
+      { name: 'terminar_viaje', description: 'Termina y guarda el viaje en curso.' },
+      { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
+      { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor.', parameters: { type: 'OBJECT', properties: { dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
+      { name: 'olvidar', description: 'Borra de la memoria lo que contenga esa palabra clave.', parameters: { type: 'OBJECT', properties: { palabra: { type: 'STRING' } }, required: ['palabra'] } },
+    ] }];
+  },
+  async start() {
+    if (this.on) return;
+    if (!S.aiKey) { toast('Primero pega la clave de Gemini en Ajustes'); return; }
+    if (!featureAllowed('microphone') || !navigator.mediaDevices?.getUserMedia) { micNote('Aquí no se puede usar el micrófono. Abre tu enlace https en Chrome.', 8000); return; }
+    if (performance.now() < (App.liveCoolUntil || 0)) { micNote('La voz en vivo está en pausa por el límite gratuito. Usa el modo normal un rato.', 8000); return; }
+    this.on = true; this.want = true; this.tries = 0; this.tr = []; this.closing = false; App.dirty = true;
+    Talk.stopWake(); Voice.stop(); Talk.beep();
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); if (this.ctx.resume) await this.ctx.resume();
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      this.gain = this.ctx.createGain(); this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 512; this.gain.connect(this.analyser); this.analyser.connect(this.ctx.destination);
+      this.prevA = Voice.analyser; this.prevB = Voice.buf; Voice.analyser = this.analyser; Voice.buf = new Uint8Array(this.analyser.fftSize);
+      await this.open(); await this.micStart();
+    } catch (e) {
+      const em = String((e && e.message) || e);
+      if (/quota|exhaust|429/i.test(em)) { App.liveCoolUntil = performance.now() + 300000; Usage.limit(); return this.fail('Llegué al límite gratuito de la voz en vivo. Sigo con el modo normal un rato.'); }
+      if (/api key|permission|403|401|invalid/i.test(em)) return this.fail('Gemini no aceptó la clave para la voz en vivo. Revísala en Ajustes.');
+      return this.fail(e && e.name === 'NotAllowedError' ? 'No hay permiso de micrófono. Permítelo en Chrome (candado) y vuelve a tocar.' : 'No pude iniciar la voz en vivo: ' + em);
+    }
+    this.t0 = Date.now(); this.last = performance.now(); logLine('i', 'Voz en vivo conectada (' + this.model + ')');
+    clearInterval(this.idle); this.idle = setInterval(() => this.tick(), 5000);
+  },
+  async open() {
+    const list = [...new Set([S.liveModel, ...this.MODELS].filter(Boolean))]; let last;
+    for (const m of list) {
+      try { await this.connect(m); this.tries = 0; return; }
+      catch (e) { last = e; logLine('!', `Voz en vivo (${m}): ${e.message}`); if (/quota|exhaust|429|api key|permission|403|401/i.test(e.message)) break; }
+    }
+    throw last || new Error('sin conexión');
+  },
+  connect(model) {
+    return new Promise((res, rej) => {
+      let settled = false; const ws = new WebSocket('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=' + encodeURIComponent(S.aiKey.trim()));
+      const done = (ok, err) => { if (settled) return; settled = true; clearTimeout(to); ok ? res() : rej(err); };
+      const to = setTimeout(() => { try { ws.close(); } catch (e) {} done(false, new Error('tardó demasiado en conectar')); }, 10000);
+      this.ws = ws; this.ready = false;
+      ws.onopen = () => ws.send(JSON.stringify({ setup: { model: 'models/' + model, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: S.liveVoice || 'Charon' } } } },
+        systemInstruction: { parts: [{ text: this.system() }] }, tools: this.decls(), inputAudioTranscription: {}, outputAudioTranscription: {} } }));
+      ws.onmessage = ev => { this.q = this.q.then(async () => {
+        let m; try { m = JSON.parse(typeof ev.data === 'string' ? ev.data : await ev.data.text()); } catch (e) { return; }
+        if (ws !== this.ws) return;
+        if (m.setupComplete) { this.ready = true; this.model = model; done(true); return; }
+        this.onMsg(m);
+      }); };
+      ws.onerror = () => {};
+      ws.onclose = ev => { if (!settled) { done(false, new Error(ev.reason || ('conexión cerrada (' + ev.code + ')'))); return; } if (ws === this.ws) this.onClose(ev); };
+    });
+  },
+  onClose(ev) {
+    this.ready = false; if (!this.on) return;
+    const why = ev.reason || ('código ' + ev.code);
+    if (/quota|exhaust|429/i.test(why)) { App.liveCoolUntil = performance.now() + 300000; Usage.limit(); return this.fail('Llegué al límite gratuito de la voz en vivo. Sigo con el modo normal un rato.'); }
+    if (!this.want) return;
+    const free = this.renewing; this.renewing = false;
+    if (!free && this.tries++ >= 3) return this.fail('Se cortó la voz en vivo (' + why + '). Toca la esfera para retomarla.');
+    setTimeout(async () => { if (!this.on) return; try { await this.open(); logLine('i', 'Voz en vivo reconectada'); } catch (e) { this.onClose({ reason: String(e.message || e) }); } }, free ? 100 : 700 * this.tries);
+  },
+  send(o) { try { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } catch (e) {} },
+  onMsg(m) {
+    if (m.goAway) { logLine('i', 'Voz en vivo: renovando la conexión'); this.renewing = true; setTimeout(() => { try { this.ws && this.ws.close(); } catch (e) {} }, 1500); return; }
+    const sc = m.serverContent;
+    if (sc) {
+      if (sc.interrupted) this.stopPlayback();
+      if (sc.inputTranscription?.text) { this.uTx += sc.inputTranscription.text; App.heardLive = this.uTx; App.listening = true; App.dirty = true; this.last = performance.now(); }
+      if (sc.outputTranscription?.text) { this.mTx += sc.outputTranscription.text; this.last = performance.now(); }
+      for (const p of (sc.modelTurn?.parts || [])) if (p.inlineData?.data) this.play(p.inlineData.data);
+      if (sc.turnComplete) this.endTurn();
+    }
+    if (m.toolCall) this.tools(m.toolCall.functionCalls || []);
+  },
+  flush(k) {
+    if (k === 'u') { const t = this.uTx.trim(); if (t) { this.tr.push(['u', t]); logLine('i', 'Tú: ' + t); } this.uTx = ''; App.listening = false; App.heardLive = ''; }
+    else { const t = this.mTx.trim(); if (t) { this.tr.push(['m', t]); logLine('i', 'Josi: ' + t); App.josiSays = { text: t, until: performance.now() + Math.max(5000, t.length * 75) }; } this.mTx = ''; }
+    while (this.tr.length > 20) this.tr.shift(); App.dirty = true;
+  },
+  endTurn() {
+    this.flush('u'); this.flush('m');
+    if (this.closing) { const ms = Math.max(0, (this.nextT - (this.ctx ? this.ctx.currentTime : 0)) * 1000) + 600; setTimeout(() => this.stop('fin'), ms); }
+  },
+  play(b64) {
+    if (!this.ctx) return; if (this.uTx) this.flush('u');
+    const bin = atob(b64), n = bin.length >> 1, f = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8); if (v & 0x8000) v -= 0x10000; f[i] = v / 32768; }
+    const buf = this.ctx.createBuffer(1, n, 24000); buf.copyToChannel(f, 0);
+    const src = this.ctx.createBufferSource(); src.buffer = buf; src.connect(this.gain);
+    const t = Math.max(this.ctx.currentTime + 0.03, this.nextT); src.start(t); this.nextT = t + buf.duration;
+    this.srcs.add(src); this.aiSpeaking = true; Voice.speaking = true; Voice.mode = 'azure'; App.dirty = true; this.last = performance.now();
+    src.onended = () => { this.srcs.delete(src); if (!this.srcs.size) { this.aiSpeaking = false; Voice.speaking = false; App.dirty = true; } };
+  },
+  stopPlayback() {
+    for (const s of this.srcs) { s.onended = null; try { s.stop(); } catch (e) {} }
+    this.srcs.clear(); this.nextT = 0; this.aiSpeaking = false; Voice.speaking = false; this.flush('m');
+  },
+  async tools(calls) {
+    const out = [];
+    for (const c of calls) { let r; try { r = this.runTool(c.name, c.args || {}); } catch (e) { r = 'error: ' + (e.message || e); } out.push({ id: c.id, name: c.name, response: { result: r } }); }
+    this.send({ toolResponse: { functionResponses: out } });
+  },
+  runTool(n, a) {
+    if (n === 'datos_del_auto') return buildCtx();
+    if (n === 'marcar_bache') { runAction('marcar_bache'); return 'marcado'; }
+    if (n === 'iniciar_viaje') { if (!App.connected) return 'no hay conexión con el auto'; if (App.trip) return 'ya hay un viaje en curso'; runAction('iniciar_viaje'); return 'iniciado'; }
+    if (n === 'terminar_viaje') { if (!App.trip) return 'no hay un viaje en curso'; runAction('terminar_viaje'); return 'terminado'; }
+    if (n === 'terminar_conversacion') { this.closing = true; return 'ok'; }
+    if (n === 'recordar') return Memory.add(a.dato) ? 'anotado' : 'no se pudo guardar';
+    if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
+    return 'herramienta desconocida';
+  },
+  say(text) {
+    Josi.lastSpoke = performance.now(); App.josiSays = { text, until: performance.now() + Math.max(5000, text.length * 75) }; App.dirty = true; logLine('i', 'Josi (aviso): ' + text);
+    if (this.ready && !this.aiSpeaking && !this.uTx) this.send({ realtimeInput: { text: '[Aviso del sistema: ' + text + ']' } });
+    return { onend: null };
+  },
+  async micStart() {
+    const src = this.ctx.createMediaStreamSource(this.stream); this.rate = this.ctx.sampleRate; this.pend = new Float32Array(0);
+    this.zero = this.ctx.createGain(); this.zero.gain.value = 0; this.zero.connect(this.ctx.destination);
+    if (this.ctx.audioWorklet && window.AudioWorkletNode) {
+      try {
+        const code = 'class P extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor("josi-pcm",P)';
+        const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+        await this.ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+        this.node = new AudioWorkletNode(this.ctx, 'josi-pcm'); this.node.port.onmessage = e => this.feed(e.data);
+        src.connect(this.node); this.node.connect(this.zero); return;
+      } catch (e) { logLine('!', 'AudioWorklet no disponible, uso el modo alterno: ' + e.message); }
+    }
+    this.node = this.ctx.createScriptProcessor(2048, 1, 1); this.node.onaudioprocess = e => this.feed(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(this.node); this.node.connect(this.zero);
+  },
+  feed(c) {
+    if (!this.on) return;
+    let e = 0, k = 0; for (let i = 0; i < c.length; i += 8) { e += c[i] * c[i]; k++; } this.micLevel = Math.min(1, Math.sqrt(e / Math.max(1, k)) * 7);
+    const p = new Float32Array(this.pend.length + c.length); p.set(this.pend); p.set(c, this.pend.length); this.pend = p;
+    const ratio = this.rate / 16000, N = 640, step = Math.round(N * ratio);
+    while (this.pend.length >= step + 2) {
+      const out = new Int16Array(N);
+      for (let j = 0; j < N; j++) { const i0 = Math.floor(j * ratio), i1 = Math.min(Math.ceil((j + 1) * ratio), this.pend.length); let sum = 0, n = 0; for (let i = i0; i < i1; i++) { sum += this.pend[i]; n++; } out[j] = Math.max(-1, Math.min(1, n ? sum / n : 0)) * 32767; }
+      this.pend = this.pend.subarray(step);
+      if (this.ready) this.send({ realtimeInput: { audio: { data: i16b64(out), mimeType: 'audio/pcm;rate=16000' } } });
+    }
+  },
+  tick() { if (this.on && performance.now() - this.last > 240000) { this.stop('idle'); micNote('Cerré la voz en vivo por inactividad. Toca la esfera para retomarla.', 8000); } },
+  stop(why) {
+    const was = this.on; this.want = false; this.on = false; this.ready = false; clearInterval(this.idle);
+    if (was && this.t0) { Usage.liveSec((Date.now() - this.t0) / 1000); this.t0 = 0; }
+    try { if (this.ws) { this.ws.onclose = null; this.ws.close(); } } catch (e) {} this.ws = null;
+    try { this.node && this.node.disconnect(); } catch (e) {} try { this.stream && this.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    this.stopPlayback(); try { this.ctx && this.ctx.close(); } catch (e) {}
+    this.ctx = this.stream = this.node = this.gain = this.analyser = null; Voice.analyser = this.prevA; Voice.buf = this.prevB; Voice.speaking = false;
+    App.listening = false; App.heardLive = ''; this.uTx = ''; this.mTx = ''; App.dirty = true; if (was) logLine('i', 'Voz en vivo cerrada' + (why ? ' (' + why + ')' : ''));
+    Talk.resumeWake();
+  },
+  fail(msg) { logLine('!', msg); this.stop('error'); micNote(msg, 9000); toast(msg); },
+};
+
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 const Talk = {
   busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
@@ -2449,9 +2664,10 @@ const Talk = {
       const r = await askAI(q); App.thinking = false; App.dirty = true;
       if (r) {
         if (r.action) runAction(r.action);
+        if (r.mem) Memory.add(r.mem); if (r.forget) Memory.forget(r.forget);
         if (r.say && (Josi.on || r.action === 'silencio')) await speakAwait(r.say);
         // conversación continua: te sigue escuchando unos segundos sin repetir «Josi»
-        if (S.chat !== false && depth < 6 && !r.end && r.action !== 'silencio' && Josi.on) {
+        if (S.chat !== false && depth < 6 && !r.end && r.action !== 'silencio' && Josi.on && Usage.rpm() < 10) {
           this.beep && 0; const nx = await listen(r.say.length > 200 ? 9000 : 6500, true, true);
           if (nx) return this.answer(nx, depth + 1);
         }
@@ -2481,7 +2697,7 @@ const Talk = {
       if (q) await this.answer(q);
     } finally { this.busy = false; this.resumeWake(); }
   },
-  wakeWanted() { return S.wake && SRC && App.connected && featureAllowed('microphone') && Josi.on; },
+  wakeWanted() { return S.wake && SRC && App.connected && featureAllowed('microphone') && Josi.on && !Live.on; },
   resumeWake() { clearTimeout(this._rt); this._rt = setTimeout(() => this.startWake(), 700); },
   startWake() {
     if (this.rec || this.busy || Voice.speaking || SR_ACTIVE || App.prompt || !this.wakeWanted()) return;
@@ -2527,7 +2743,7 @@ const Poi = {
   KIND: { restaurant: ['restaurante', 'un'], fast_food: ['local de comida rápida', 'un'], cafe: ['café', 'un'], ice_cream: ['heladería', 'una'], bar: ['bar', 'un'], pub: ['bar', 'un'] },
   dist(a, b) { const R = 6371e3, r = Math.PI / 180, dx = (b.lon - a.lon) * r * Math.cos(a.lat * r), dy = (b.lat - a.lat) * r; return R * Math.sqrt(dx * dx + dy * dy); },
   async tick() {
-    if (S.poi === false || !Josi.on || !App.connected || !App.trip || this.busy) return;
+    if (S.poi === false || Live.on || !Josi.on || !App.connected || !App.trip || this.busy) return;
     const g = App.gps, d = App.lastD; if (!g || !d || d.speed < 6 || d.speed > 70) return;
     const now = performance.now(); if (now - this.lastQ < 40000 || now - Josi.lastSpoke < 90000) return;
     if (Talk.busy || App.prompt || Voice.speaking || SR_ACTIVE) return;
@@ -2555,7 +2771,7 @@ setInterval(() => Poi.tick(), 15000);
 /* Vigilante: si algo se queda trabado (voz, micrófono, escucha), lo destraba y reanuda la escucha */
 setInterval(() => {
   const now = performance.now();
-  if (Voice.speaking) { Voice.since = Voice.since || now; if (now - Voice.since > 40000) { Voice.stop(); Voice.since = 0; } } else Voice.since = 0;
+  if (Voice.speaking && !Live.on) { Voice.since = Voice.since || now; if (now - Voice.since > 40000) { Voice.stop(); Voice.since = 0; } } else Voice.since = 0;
   if (Talk.busy) { Talk.busySince = Talk.busySince || now; if (now - Talk.busySince > 120000) { Talk.busy = false; Talk.busySince = 0; SR_ACTIVE = null; App.listening = false; App.thinking = false; try { speechSynthesis.cancel(); } catch (e) {} } } else Talk.busySince = 0;
   if (Talk.rec) { Talk.recSince = Talk.recSince || now; if (now - Talk.recSince > 25000) { Talk.stopWake(); Talk.recSince = 0; } } else Talk.recSince = 0;
   if (Talk.wakeWanted() && !Talk.rec && !Talk.busy && !Voice.speaking && !SR_ACTIVE && !App.prompt) Talk.startWake();
@@ -2611,6 +2827,7 @@ async function connect(kind, opt = {}) {
   renderView();
 }
 async function disconnect(silent) {
+  if (typeof Live !== 'undefined' && Live.on) Live.stop('desconexión');
   App.polling = false;
   const t = App.transport; App.transport = null; App.elm = null; App.connected = false;
   stopGps();
@@ -3455,6 +3672,24 @@ function viewSettings() {
     <div class="f"><span>Responder al decir «Josi» <span class="d">El micrófono escucha mientras estás conectado (necesita internet y gasta algo más de batería). Siempre puedes usar el botón 🎙.</span></span><input type="checkbox" id="sWakeOn" ${S.wake ? 'checked' : ''}></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn" id="sMicTest">Probar micrófono</button><button class="btn primary" id="sAiTest">Probar una pregunta</button></div>
   </section>
+  <section class="card form"><div class="card-h">Voz en vivo · Gemini Live</div>
+    <p class="muted" style="margin-top:0">Hablas y Josi te responde con su propia voz, sin pausas, y puedes interrumpirlo. Toca la esfera para empezar y otra vez para terminar. Usa el plan gratuito de Google, que tiene límites y puede cambiar; cada sesión dura unos 10 minutos y se renueva sola.</p>
+    <div class="f"><span>Activar voz en vivo <span class="d">Al tocar la esfera o el 🎙 se abre la conversación en vivo</span></span><input type="checkbox" id="sLive" ${S.live ? 'checked' : ''}></div>
+    <div class="f"><span>Voz de Josi</span><select id="sLiveVoice">${['Charon', 'Orus', 'Fenrir', 'Puck'].map(v => `<option value="${v}" ${(S.liveVoice || 'Charon') === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="sLiveTest">${Live.on ? 'Terminar voz en vivo' : 'Probar voz en vivo'}</button></div>
+  </section>
+  <section class="card form"><div class="card-h">Memoria de Josi</div>
+    <p class="muted" style="margin-top:0">Lo que Josi recuerda de ti entre un día y otro. Dile «recuerda que…» u «olvida…». Se guarda solo en este aparato y no guarda claves ni datos de tarjetas.</p>
+    ${Memory.list.length ? Memory.list.map((m, i) => `<div class="f"><span>${esc(m.t)}</span><button class="btn" data-mdel="${i}">Quitar</button></div>`).join('') : '<p class="muted">Todavía no recuerdo nada tuyo.</p>'}
+    <div class="f"><input type="text" id="memNew" maxlength="160" placeholder="Agregar algo a mano" style="flex:1"><button class="btn" id="memAdd">Agregar</button></div>
+    ${Memory.list.length ? '<div class="actions" style="justify-content:flex-start"><button class="btn" id="memClear">Borrar toda la memoria</button></div>' : ''}
+  </section>
+  <section class="card form"><div class="card-h">Uso de Gemini hoy</div>
+    ${(Usage.roll(), '')}<div class="f"><span>Consultas de texto</span><b>${Usage.d.req}</b></div>
+    <div class="f"><span>Voz en vivo</span><b>${Math.round(Usage.d.live / 60)} min</b></div>
+    <div class="f"><span>Avisos de límite</span><b>${Usage.d.lim}</b></div>
+    <p class="muted">Google define los límites gratuitos y los cambia; la app no los conoce con exactitud. Te avisa con voz cuando Gemini dice que llegaste al límite y espera el tiempo que Google indique. Puedes ver tu uso real en <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener">aistudio.google.com/usage</a>.</p>
+  </section>
   <section class="card form"><div class="card-h">Calibrar el consumo</div>
     <p class="muted" style="margin-top:0">La app calcula la gasolina con el sensor de aire. Para afinarla: llena el tanque, marca «tanque lleno», maneja normal y, en la siguiente carga completa, escribe cuánto entró.</p>
     <div class="f"><span>Factor actual</span><input type="number" id="sCal" min="0.7" max="1.3" step="0.01" value="${(S.calib || 1).toFixed(2)}"></div>
@@ -3523,6 +3758,12 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sGpsReal').onchange = e => { S.gpsReal = e.target.checked; saveSettings(); if (App.transport?.kind === 'sim') { if (S.gpsReal) startGps(); else stopGps(); } };
+  $('#sLive').onchange = e => { S.live = e.target.checked; saveSettings(); if (!S.live && Live.on) Live.stop('manual'); };
+  $('#sLiveVoice').onchange = e => { S.liveVoice = e.target.value; saveSettings(); };
+  $('#sLiveTest').onclick = () => { if (Live.on) { Live.stop('manual'); re(); return; } if (!App.connected) { toast('Conecta primero la simulación o el adaptador'); return; } S.live = true; saveSettings(); Live.start(); };
+  document.querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { Memory.list.splice(+b.dataset.mdel, 1); Memory.save(); re(); });
+  $('#memAdd').onclick = () => { if (Memory.add($('#memNew').value)) { toast('Anotado'); re(); } else toast('No pude guardar eso'); };
+  if ($('#memClear')) $('#memClear').onclick = () => { if (confirm('¿Borrar todo lo que Josi recuerda?')) { Memory.list = []; Memory.save(); re(); } };
   $('#sChat').onchange = e => { S.chat = e.target.checked; saveSettings(); };
   $('#sAiKey').onchange = e => { S.aiKey = e.target.value.trim(); saveSettings(); };
   $('#sAiModel').onchange = e => { S.aiModel = e.target.value.trim() || 'gemini-flash-lite-latest'; saveSettings(); };
@@ -3559,13 +3800,14 @@ function bindSettings() {
     if (!(real > 0) || !(est > 0.5)) { toast('Hace falta más manejo desde la marca para calibrar'); return; }
     S.calib = +clamp(S.calib * real / est, 0.7, 1.3).toFixed(3); S.tankMark = Date.now(); saveSettings(); toast('Nuevo factor: ' + fmt(S.calib, 3)); re();
   };
-  const backup = () => JSON.stringify({ app: 'EcoDrive', v: 2, exported: new Date().toISOString(), settings: Object.assign({}, S, { azKey: '', aiKey: '' }), trips: App.trips, places: Places.list, hazards: Hazards.list });
+  const backup = () => JSON.stringify({ app: 'EcoDrive', v: 2, exported: new Date().toISOString(), settings: Object.assign({}, S, { azKey: '', aiKey: '' }), trips: App.trips, places: Places.list, hazards: Hazards.list, memory: Memory.list });
   $('#bCopy').onclick = async () => { const txt = backup(); try { await navigator.clipboard.writeText(txt); toast('Respaldo copiado: pégalo en una nota o correo'); } catch (e) { const ta = $('#bTxt'); ta.classList.remove('hidden'); ta.value = txt; ta.select(); toast('Selecciona y copia el texto de abajo'); } };
   if ($('#bDown')) $('#bDown').onclick = () => { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([backup()], { type: 'application/json' })); a.download = 'ecodrive-respaldo-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast('Descarga no disponible aquí: usa «Copiar respaldo»'); } };
   $('#bImp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { const j = JSON.parse(await f.text()); const ts = Array.isArray(j) ? j : j.trips; if (!Array.isArray(ts)) throw new Error('formato');
       const ids = new Set(App.trips.map(t => t.id)); let n = 0; for (const t of ts) if (t && t.id && !ids.has(t.id)) { App.trips.push(t); n++; }
+      if (Array.isArray(j.memory)) for (const m of j.memory) if (m && m.t) Memory.add(m.t);
       App.trips.sort((a, b) => b.start - a.start); saveTrips(); toast(`${n} viaje(s) importado(s)`); re();
     } catch (err) { errorBox('No se pudo importar', 'El archivo no es un respaldo válido de EcoDrive.'); }
   };
@@ -3594,7 +3836,7 @@ function frame(ts) {
     if (App.trip) updateTripBar();
   }
   Wave.draw();
-  const tb = document.getElementById('talkBtn'); if (tb) tb.classList.toggle('on', !!(Talk.wakeActive || App.listening));
+  const tb = document.getElementById('talkBtn'); if (tb) tb.classList.toggle('on', !!(Talk.wakeActive || App.listening || Live.on));
   requestAnimationFrame(frame);
 }
 async function tryAutoConnect() {
@@ -3611,7 +3853,7 @@ function boot() {
   $('#brandCar').src = CAR_IMG;
   $('#markBtn').onclick = markHazard;
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#josiStage')) $('#talkBtn').click(); });
-  $('#talkBtn').onclick = () => { if (!App.connected) { toast('Conecta primero el adaptador o la simulación'); return; } Talk.button(); };
+  $('#talkBtn').onclick = () => { if (!App.connected) { toast('Conecta primero el adaptador o la simulación'); return; } if (S.live) { Live.on ? Live.stop('manual') : Live.start(); return; } Talk.button(); };
   document.addEventListener('pointerdown', () => { try { Voice.ctx && Voice.ctx.resume(); } catch (e) {} }, true);
   document.addEventListener('pointerdown', () => { if (Josi.pending) { const t = Josi.pending; Josi.pending = null; App.needTap = false; Josi.speak(t, true); } }, true);
   if (navigator.usb) navigator.usb.addEventListener('connect', () => tryAutoConnect());
