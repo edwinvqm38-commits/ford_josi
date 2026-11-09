@@ -1023,7 +1023,6 @@ details{border-radius:14px}
   header.top{gap:6px;padding-top:calc(6px + env(safe-area-inset-top));padding-bottom:4px}
   .brand b{font-size:17px}.brand .car-thumb{height:28px}
   #markBtn{font-size:0;width:44px;padding:0;display:grid;place-items:center}#markBtn svg.ic{margin:0}
-  #fsBtn{display:none}
   #connBtn{padding:6px 12px;min-height:40px}
   .hdr-sp{display:none}
   #tripBtn{margin-left:auto}
@@ -1045,7 +1044,8 @@ details{border-radius:14px}
 /* Visual 2.0 · celular: todo en una sola pantalla, sin deslizar */
 @media (max-width:640px){
   header.top{flex-wrap:wrap;gap:6px}
-  .brand,.chips,#fsBtn{display:none}
+  .brand,.chips{display:none}
+  #markBtn{display:none}
   .hdr-sp{display:block;flex:1}
   #tripBtn{font-size:0;width:52px;padding:0;margin-left:0;display:grid;place-items:center}#tripBtn svg.ic{margin:0;width:22px;height:22px}
   #talkBtn,#voiceBtn,#markBtn{width:44px}
@@ -1065,6 +1065,50 @@ details{border-radius:14px}
   .tiles .tile:nth-child(n+3){display:none}
   .tile{min-height:64px;padding:6px 12px}.tile .v{font-size:34px}
   .coach{margin:0 0 8px;min-height:36px}
+}
+
+.fs-out{display:none}body.is-fs .fs-in{display:none}body.is-fs .fs-out{display:inline}
+body.is-fs #fsBtn{border-color:rgba(76,180,245,.5);color:var(--accent)}
+/* Visual 2.0 · pantallas bajas en horizontal (celular acostado): todo en una sola vista */
+@media (max-height:560px) and (orientation:landscape){
+  header.top{flex-wrap:nowrap;gap:6px;padding:4px 10px;align-items:center}
+  header.top .brand{display:flex}.brand .car-thumb,.brand small,.brand span{display:none}.brand b{font-size:15px}
+  .chips{display:flex}.chips .chip b{display:none}.chips .chip{padding:5px 8px}
+  #connBtn{padding:4px 10px;min-height:38px}#connTxt{font-size:13px;max-width:130px}
+  header.top .btn{min-height:40px}
+  #markBtn{display:inline-flex;font-size:0;width:44px;padding:0;place-items:center;justify-content:center}#markBtn svg.ic{margin:0}
+  #talkBtn,#voiceBtn,#fsBtn{width:44px}
+  #fsBtn{display:inline-flex}
+  #tripBtn{font-size:0;width:52px;padding:0;display:grid;place-items:center;margin-left:0}#tripBtn svg.ic{margin:0}
+  .hdr-sp{display:block;flex:1}#tripClock{display:inline}
+  .coach{display:none}
+  main{padding:6px 10px}
+  main.fit{overflow:hidden;display:flex;flex-direction:column}
+  main.fit .live,main.fit .live.has-sim{flex:1;min-height:0;display:grid;gap:8px;grid-template-columns:minmax(0,30fr) minmax(0,40fr) minmax(0,30fr);grid-template-rows:minmax(0,1fr);grid-template-areas:"gauge score tiles"!important}
+  .effort-card,.sim-panel,.trip-card{display:none!important}
+  .gauge-card{padding:8px 10px;display:flex;flex-direction:column;justify-content:center}
+  .gauge-card .card-h,.gauge-sub{display:none}
+  .gauge-card svg{flex:none;min-height:0;height:auto;max-height:100%;width:100%}
+  #gVal{font-size:52px!important}
+  .score-card{min-height:0;padding:6px 10px}.score-card .card-h{display:none}
+  .josi-stage{min-height:0}
+  .josi-car{height:31%}
+  .josi-foot{display:none}
+  .tiles{grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,minmax(0,1fr));gap:6px}
+  .tile{min-height:0;padding:2px 8px}.tile .v{font-size:26px}.tile .t{font-size:11px}.tile .u{font-size:10px}
+  nav.tabs{padding-top:0}nav.tabs button{min-height:44px;flex-direction:row;gap:6px;font-size:12px}nav.tabs button svg{width:20px;height:20px}
+  nav.tabs button::before{display:none}nav.tabs button.on{background:rgba(76,180,245,.14);border-radius:12px}
+}
+
+/* Visual 2.0 · tablet vertical: Josi grande arriba */
+@media (min-width:641px) and (max-width:1000px) and (orientation:portrait) and (min-height:700px){
+  main.fit .live{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"score score" "gauge tiles" "effort effort" "trip trip"!important;grid-template-rows:minmax(0,1.35fr) minmax(0,1fr) auto auto}
+  main.fit .live.has-sim{grid-template-areas:"score score" "gauge tiles" "effort sim" "trip trip"!important}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr))}
+  .tile .v{font-size:clamp(26px,3.6vh,34px)}
+  .gauge-card svg{max-height:210px}
+  .josi-car{height:44%}
+  .live .effort-grid{grid-template-columns:1fr;gap:10px}.live .bar-legend{display:none}
 }
 /* modo noche automático: más tenue y cálido, menos brillo */
 body.night{--accent:#6fb8e6;--ink:#dde6ee;--ink2:#a2b0be;filter:brightness(.82) saturate(.9)}
@@ -1086,7 +1130,7 @@ body.night .josi-car,body.night .hero img{filter:drop-shadow(0 10px 14px rgba(0,
   <button id="voiceBtn" class="btn icon voice-btn" title="Voz de Josi" aria-label="Voz de Josi"></button>
   <button id="tripBtn" class="btn primary"><svg class="ic" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor"/></svg> Iniciar viaje</button>
   <button id="fsBtn" class="btn icon" title="Pantalla completa" aria-label="Pantalla completa">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="fs-in" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="fs-out" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
   </button>
 </header>
 <main id="view"></main>
@@ -4235,6 +4279,8 @@ function boot() {
   vb.onclick = () => { S.voice = !Josi.on; saveSettings(); drawVB(); if (Josi.on) Josi.speak('Aquí estoy.', true); else try { speechSynthesis.cancel(); } catch (e) {} toast(Josi.on ? 'Josi hablará' : 'Josi en silencio'); };
   drawVB();
   $('#tripBtn').onclick = () => { if (App.trip) finishTrip('manual'); else if (App.connected) startTrip(false); };
+  const fsSync = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); document.body.classList.toggle('is-fs', on); const b = $('#fsBtn'); if (b) { b.title = on ? 'Salir de pantalla completa' : 'Pantalla completa'; b.setAttribute('aria-label', b.title); } };
+  document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync); fsSync();
   $('#fsBtn').onclick = () => { const d = document; if (d.fullscreenElement) d.exitFullscreen?.().catch(() => {}); else d.documentElement.requestFullscreen?.().catch(() => toast('Pantalla completa no disponible aquí')); };
   $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' && !$('#sumOk')) closeModal(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && App.connected) requestWake(); });
