@@ -2666,14 +2666,91 @@ const Memory = {
   list: store.get(MKEY, []),
   save() { store.set(MKEY, this.list); },
   bad(t) { return /(\d[\s-]?){11,}|contrase|password|\bpin\b|\bcvv\b|tarjeta|\btoken\b|clave (de|del)/i.test(t); },
-  add(text) {
+  add(text, who) {
     text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 160); if (text.length < 4 || this.bad(text)) return false;
     const k = normName(text); if (this.list.some(m => normName(m.t) === k)) return true;
-    this.list.unshift({ t: text, ts: Date.now() }); this.list.length = Math.min(this.list.length, 40); this.save(); return true;
+    this.list.unshift(who ? { t: text, ts: Date.now(), p: cleanName(who) || undefined } : { t: text, ts: Date.now() }); this.list.length = Math.min(this.list.length, 40); this.save(); return true;
   },
-  forget(q) { const k = normName(q); if (k.length < 3) return 0; const n = this.list.length; this.list = this.list.filter(m => !normName(m.t).includes(k)); this.save(); return n - this.list.length; },
-  ctx() { return this.list.slice(0, 25).map(m => m.t); },
+  forget(q) { const k = normName(q); if (k.length < 3) return 0; const n = this.list.length; this.list = this.list.filter(m => !normName(m.t).includes(k)); this.save(); const c = typeof Convo !== 'undefined' ? Convo.forget(q) : 0; return n - this.list.length + c; },
+  ctx() { return this.list.slice(0, 25).map(m => m.p ? m.p + ': ' + m.t : m.t); },
   about(place) { const w = normName(place).split(/\s+/).filter(x => x.length >= 4); if (!w.length) return []; return this.list.filter(m => { const t = normName(m.t); return w.some(x => t.includes(x)); }).slice(0, 3).map(m => m.t); },
+};
+/* ---------- Memoria de conversaciones (solo en este aparato) ---------- */
+const CKEY = 'ecodrive.convo.v1';
+const CVSENS = /enfermed|diagn[oó]st[ií]c|c[aá]ncer|tumor|deuda|embarg|divorci|infiel|pelea con|depres|ansied|suicid|embaraz|abort|adicci|quiebra|despid|demanda|violen|abuso|luto|falleci/i;
+const Convo = {
+  d: store.get(CKEY, { on: true, sessions: [], trips: [] }),
+  save() { if (!store.set(CKEY, this.d)) { this.d.sessions.length = Math.min(this.d.sessions.length, 8); store.set(CKEY, this.d); } },
+  get on() { return this.d.on !== false; },
+  simNow() { return App.transport?.kind === 'sim'; },
+  cur() {
+    const n = Date.now(), s0 = this.d.sessions[0];
+    if (s0 && n - s0.last < 1800000 && !!s0.sim === this.simNow()) return s0;
+    const ns = { id: 'c' + n.toString(36), ts: n, last: n, who: [], turns: [], sim: this.simNow() || undefined, dest: App.dest || undefined };
+    this.d.sessions.unshift(ns); this.d.sessions.length = Math.min(this.d.sessions.length, 60);
+    this.d.sessions.forEach((x, i) => { if (i >= 10 && x.turns.length) { x.topics = this.topics(x); x.turns = []; } });
+    return ns;
+  },
+  topics(x) { return x.turns.filter(t => t.r === 'u' && !t.sens).slice(0, 3).map(t => t.t.slice(0, 70)).join(' / '); },
+  add(role, text) {
+    if (!this.on) return;
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 280);
+    if (text.length < 3 || Memory.bad(text)) return;
+    const s = this.cur(), w = People.who(); if (w && !s.who.includes(w)) s.who.push(w);
+    const t = { r: role, t: text, ts: Date.now() }; if (role === 'u' && w) t.p = w; if (CVSENS.test(text)) t.sens = 1;
+    s.turns.push(t); if (s.turns.length > 80) s.turns.splice(0, s.turns.length - 80); s.last = Date.now(); this.save();
+  },
+  turn(q, a) { this.add('u', q); this.add('j', a); },
+  forget(q) {
+    const k = normName(q); if (k.length < 3) return 0; let n = 0;
+    for (const x of this.d.sessions) { const b = x.turns.length; x.turns = x.turns.filter(t => !normName(t.t).includes(k)); n += b - x.turns.length; if (x.topics && normName(x.topics).includes(k)) x.topics = ''; }
+    this.d.trips = this.d.trips.filter(t => !normName(t.t).includes(k)); if (n) this.save(); return n;
+  },
+  when(ts) { const dd = Math.round((Date.now() - ts) / 86400000); return dd <= 0 ? 'hoy' : dd === 1 ? 'ayer' : dd < 7 ? 'hace ' + dd + ' días' : new Date(ts).toLocaleDateString(LOC, { day: 'numeric', month: 'short' }); },
+  ctx(q) {
+    if (!this.on) return undefined;
+    const sim = this.simNow(), all = this.d.sessions.filter(x => !!x.sim === sim), cur = this.d.sessions[0];
+    const prev = all.filter(x => x !== cur || Date.now() - x.last > 120000).slice(0, 2).map(x => ({
+      cuando: this.when(x.ts), con: x.who.length ? x.who.join(', ') : undefined,
+      resumen: x.turns.length ? x.turns.filter(t => !t.sens).slice(-6).map(t => (t.r === 'u' ? (t.p || 'Él') : 'Josi') + ': ' + t.t.slice(0, 90)).join(' | ') : (x.topics || undefined) })).filter(x => x.resumen);
+    const words = normName(q || '').split(/[^a-z0-9ñ]+/).filter(w => w.length >= 4), rel = [];
+    if (words.length) for (const x of all) for (const t of x.turns) {
+      if (x === cur && Date.now() - x.last < 600000) continue;
+      const tn = normName(t.t), sc = words.reduce((a, w) => a + (tn.includes(w) ? 1 : 0), 0);
+      if (sc >= (words.length > 2 ? 2 : 1)) rel.push({ sc, o: { cuando: this.when(t.ts), quien: t.r === 'u' ? (t.p || 'él') : 'Josi', dijo: t.t.slice(0, 140), sensible: t.sens ? 'sí: solo si él lo vuelve a tocar' : undefined } });
+    }
+    rel.sort((a, b) => b.sc - a.sc);
+    const out = { charlas_previas: prev.length ? prev : undefined, recuerdos_relacionados: rel.length ? rel.slice(0, 3).map(r => r.o) : undefined, viajes_recientes: this.d.trips.filter(t => !!t.sim === sim).slice(0, 3).map(t => t.t) };
+    return out.charlas_previas || out.recuerdos_relacionados || out.viajes_recientes.length ? out : undefined;
+  },
+  tripNote(t) {
+    if (!this.on || !t) return;
+    const ses = this.d.sessions.filter(x => x.last >= t.start && x.ts <= (t.end || Date.now()) + 60000 && !!x.sim === !!t.sim);
+    const top = ses.map(x => this.topics(x) || this.topics({ turns: x.turns })).filter(Boolean).join(' / ').slice(0, 140);
+    const f = new Date(t.start).toLocaleDateString(LOC, { day: 'numeric', month: 'short' });
+    this.d.trips.unshift({ ts: t.start, sim: t.sim || undefined, t: `${f}: ${t.km != null ? (+t.km).toFixed(1) + ' km' : ''}${t.kmpl ? ', ' + Units.fmtEcon(t.kmpl) + ' ' + Units.econLabel() : ''}${t.score != null ? ', puntaje ' + t.score : ''}${t.dest ? ', a ' + t.dest : ''}${top ? '. Charlaron de: ' + top : ''}` });
+    this.d.trips.length = Math.min(this.d.trips.length, 30); this.save();
+  },
+  stats() { return { s: this.d.sessions.length, m: this.d.sessions.reduce((a, x) => a + x.turns.length, 0), t: this.d.trips.length }; },
+  md() {
+    const L = ['# Josi · memoria', '', `Exportado: ${new Date().toLocaleString(LOC)}`, '', '## Lo que Josi sabe'];
+    Memory.list.forEach(m => L.push(`- ${m.p ? '**' + m.p + '**: ' : ''}${m.t}`)); if (!Memory.list.length) L.push('- (nada todavía)');
+    L.push('', '## Personas'); People.list.forEach(p => L.push(`- **${p.name}**${p.rel ? ' (' + p.rel + ')' : ''}${p.nota ? ': ' + p.nota : ''}`)); if (!People.list.length) L.push('- (nadie registrado)');
+    L.push('', '## Viajes'); this.d.trips.forEach(t => L.push(`- ${t.t}${t.sim ? ' _(simulación)_' : ''}`)); if (!this.d.trips.length) L.push('- (sin notas)');
+    L.push('', '## Charlas');
+    for (const x of this.d.sessions) {
+      L.push('', `### ${new Date(x.ts).toLocaleString(LOC, { dateStyle: 'medium', timeStyle: 'short' })}${x.who.length ? ' · con ' + x.who.join(', ') : ''}${x.dest ? ' · hacia ' + x.dest : ''}${x.sim ? ' · simulación' : ''}`);
+      if (x.turns.length) x.turns.forEach(t => L.push(`- **${t.r === 'u' ? (t.p || S.userName || 'Edwin') : botName()}:** ${t.t}`)); else L.push(`- _Resumen:_ ${x.topics || '(sin texto)'}`);
+    }
+    return L.join('\n');
+  },
+  merge(j) {
+    if (!j) return 0; let n = 0; const ids = new Set(this.d.sessions.map(x => x.id));
+    for (const x of j.sessions || []) if (x && x.id && !ids.has(x.id) && Array.isArray(x.turns)) { this.d.sessions.push(x); n++; }
+    this.d.sessions.sort((a, b) => b.ts - a.ts); this.d.sessions.length = Math.min(this.d.sessions.length, 60);
+    const ts = new Set(this.d.trips.map(t => t.ts + t.t)); for (const t of j.trips || []) if (t && t.t && !ts.has(t.ts + t.t)) this.d.trips.push(t);
+    this.d.trips.sort((a, b) => b.ts - a.ts); this.d.trips.length = Math.min(this.d.trips.length, 30); this.save(); return n;
+  },
 };
 /* ---------- Nombre de Josi, personas del auto y modo compañero ---------- */
 const botName = () => (S.botName || 'Josi');
@@ -2721,7 +2798,7 @@ function companyRules(live) {
   const ren = live ? 'llama a cambiar_nombre con el nombre nuevo y confírmalo con naturalidad' : 'pon el nombre nuevo en "renombrar" y confírmalo con naturalidad';
   return `Puede haber más de una persona en el auto (su esposa, su familia, amigos) y todas pueden hablarte; tú no distingues voces, solo el contenido de lo que dicen. Sabes a quiénes conoces (personas) y habla_ahora dice quién crees que habla. Si alguien se presenta o por el contexto es claro quién habla, ${who}. Si de pronto habla alguien que no reconoces o dudas de quién es, pregunta una sola vez, con naturalidad y sin interrogar, quién es; si no oíste bien el nombre, repítelo para confirmarlo antes de guardarlo, y luego ${reg}. Trata a cada persona por su nombre y no le atribuyas a una lo que dijo otra. Si te piden que cambies de nombre ("ahora te llamarás…", "te voy a decir…"), ${ren}.
 Si te piden que asumas un rol, como un pastor cristiano, hazlo con respeto, calidez y sin juzgar: aconseja desde las enseñanzas de la Biblia, cita pasajes solo si estás seguro de ellos y no inventes versículos. Si preguntan qué diría Jesús, responde con lo que enseñan los evangelios ("según lo que Jesús enseñó…"), sin hablar en su nombre ni como si fueras Él. En política, religión y temas polémicos expón las posturas con equilibrio y no impongas la tuya; en salud, leyes o emergencias sugiere un profesional. En temas de pareja o familia sé sereno, escucha a todos y no tomes partido. Para cultura general y preguntas cotidianas responde breve y profundiza solo si te lo piden.
-Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
+Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
 }
 /* ---------- Uso de Gemini (para avisarte antes de toparte con el límite gratuito) ---------- */
 const UKEY = 'ecodrive.usage.v1';
@@ -2735,14 +2812,14 @@ const Usage = {
   liveSec(x) { this.roll(); this.d.live += x; this.save(); },
   rpm() { const n = Date.now(); this.ts = this.ts.filter(t => n - t < 60000); return this.ts.length; },
 };
-function buildCtx() {
+function buildCtx(q) {
   const tr = App.trip, V = App.vals, d = App.lastD, today = dayStats(startOf('day')), month = dayStats(startOf('month'));
   const ctx = { hora: new Date().toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }), conductor: S.userName || 'Edwin', auto: 'Ford Fusion SE 2018, motor 2.0 EcoBoost turbo',
     unidad: Units.econLabel(), moneda: S.currency, meta: +Units.econ(goalKmpl()).toFixed(1), promedio_habitual: +Units.econ(S.baseKmpl || 6.5).toFixed(1),
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
     hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx(), personas: People.ctx(), habla_ahora: People.who(), recuerdos_del_lugar: Poi.cur && performance.now() - Poi.curT < 600000 ? Memory.about(Poi.cur.nombre) : [], ubicacion: (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })() };
+    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx(), charlas: Convo.ctx(q), personas: People.ctx(), habla_ahora: People.who(), recuerdos_del_lugar: Poi.cur && performance.now() - Poi.curT < 600000 ? Memory.about(Poi.cur.nombre) : [], ubicacion: (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })() };
   return ctx;
 }
 const AI_HIST = [];
@@ -2751,7 +2828,7 @@ async function askAI(q) {
   App.aiErr = null;
   if (performance.now() < (App.aiCoolUntil || 0)) { App.aiErr = { status: 429, kind: 'limite', wait: Math.ceil((App.aiCoolUntil - performance.now()) / 1000), detail: 'en pausa por el límite gratuito' }; return null; }
   Usage.req();
-  const ctx = buildCtx();
+  const ctx = buildCtx(q);
   const sys = `Eres ${botName()}, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
 Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
 Tus respuestas se leen en voz alta mientras maneja: normalmente una o dos frases, tres como máximo. Pero si pide expresamente que te extiendas o profundices (cuéntame, explícame, hablemos de…), puedes dar hasta unas ocho frases, en partes naturales, y preguntar si quiere seguir. Si el campo lugar_cercano existe y pregunta por ese sitio, cuéntale lo que sepas con honestidad; no inventes menú, precios, horarios ni reseñas que no conozcas, y dile que eso lo ve en Maps. Si va en movimiento (velocidad mayor a 0) sé aún más breve.
@@ -2792,7 +2869,7 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   let out; try { out = JSON.parse(raw); } catch (e) { const m = raw.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)/); out = { say: m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : raw.replace(/[{}]/g, '') }; }
   const txt = String(out.say || '').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: 'sin texto' }; return null; }
-  AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
+  AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift(); Convo.turn(q, txt);
   const ACT = ['marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio'];
   return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '', persona: typeof out.persona === 'string' ? out.persona : '', habla: typeof out.habla === 'string' ? out.habla : '', renombrar: typeof out.renombrar === 'string' ? out.renombrar : '' };
 }
@@ -2822,7 +2899,7 @@ async function askWeb(q) {
   const cand = res.j?.candidates?.[0];
   const txt = (cand?.content?.parts || []).map(p => p.text || '').join(' ').replace(/https?:\/\/\S+/g, '').replace(/\[\d+(?:\s*,\s*\d+)*\]/g, '').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: cand?.finishReason || 'respuesta vacía' }; return null; }
-  AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift();
+  AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift(); Convo.turn(q, txt);
   return txt;
 }
 async function geminiCall(m, bodyTxt, ms) {
@@ -2855,12 +2932,13 @@ const Live = {
   useSearch: true, on: false, ready: false, want: false, closing: false, renewing: false, ws: null, ctx: null, stream: null, node: null, zero: null, gain: null, analyser: null, model: null,
   nextT: 0, srcs: new Set(), aiSpeaking: false, tr: [], uTx: '', mTx: '', micLevel: 0, last: 0, t0: 0, tries: 0, q: Promise.resolve(), pend: new Float32Array(0), rate: 48000, idle: null, prevA: null, prevB: null,
   system() {
-    const name = S.userName || 'Edwin', mem = Memory.ctx(), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
+    const name = S.userName || 'Edwin', mem = Memory.ctx(), chr = Convo.ctx(''), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
     return `Eres ${botName()}, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. Tienes búsqueda en Google: úsala cuando pregunte por noticias, clima, tráfico, precios, resultados, horarios o datos de un lugar o negocio, y no inventes nada de eso. ${(() => { const l = buildCtx().ubicacion; return l ? 'Ubicación aproximada del conductor: latitud ' + l.lat + ', longitud ' + l.lon + '.' : 'No sabes dónde está; si hace falta, pregúntale la ciudad.'; })()} Ahora es ${new Date().toLocaleString(LOC, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.
 Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Puedes cambiar la pantalla con mostrar_pantalla (en_vivo, viajes, rutas, diagnostico, ajustes) cuando lo pida; si pide cambiar de pestaña sin decir cuál, pregúntale en una frase qué quiere ver. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
 ${companyRules(true)}
 ${People.list.length ? 'Personas que conoces: ' + People.list.map(p => p.name + (p.rel ? ' (' + p.rel + ')' : '') + (p.nota ? ', ' + p.nota : '')).join('; ') + '.' : 'Todavía no conoces a nadie más que a él.'}
 ${mem.length ? 'Lo que recuerdas de él: ' + mem.join('; ') + '.' : ''}
+${chr ? 'Memoria de charlas anteriores (úsala con criterio y solo si viene al caso): ' + JSON.stringify(chr) : ''}
 ${rec ? 'Conversación reciente (se renovó la conexión; continúa sin saludar de nuevo):\n' + rec : ''}
 A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras, muy breve, sin leer los corchetes.`;
   },
@@ -2872,7 +2950,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       { name: 'iniciar_viaje', description: 'Inicia el registro de un viaje.' },
       { name: 'terminar_viaje', description: 'Termina y guarda el viaje en curso.' },
       { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
-      { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor.', parameters: { type: 'OBJECT', properties: { dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
+      { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor o sobre otra persona del auto (indica persona si no es el conductor).', parameters: { type: 'OBJECT', properties: { persona: { type: 'STRING', description: 'nombre de a quién se refiere el dato, si no es el conductor' }, dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
       { name: 'registrar_persona', description: 'Guarda a una persona que viaja en el auto (esposa, familia, amigo) tras confirmar su nombre.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, relacion: { type: 'STRING', description: 'ej. esposa, hijo, amigo' }, nota: { type: 'STRING', description: 'dato breve opcional' } }, required: ['nombre'] } },
       { name: 'quien_habla', description: 'Indica quién está hablando ahora, cuando lo sabes.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'cambiar_nombre', description: 'Cambia el nombre con el que lo llaman a ti.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
@@ -2959,8 +3037,8 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (m.toolCall) this.tools(m.toolCall.functionCalls || []);
   },
   flush(k) {
-    if (k === 'u') { const t = this.uTx.trim(); if (t) { this.tr.push(['u', t]); App.lastUser = performance.now(); logLine('i', 'Tú: ' + t); } this.uTx = ''; App.listening = false; App.heardLive = ''; }
-    else { const t = this.mTx.trim(); if (t) { this.tr.push(['m', t]); logLine('i', 'Josi: ' + t); App.josiSays = { text: t, until: performance.now() + Math.max(5000, t.length * 75) }; } this.mTx = ''; }
+    if (k === 'u') { const t = this.uTx.trim(); if (t) { this.tr.push(['u', t]); Convo.add('u', t); App.lastUser = performance.now(); logLine('i', 'Tú: ' + t); } this.uTx = ''; App.listening = false; App.heardLive = ''; }
+    else { const t = this.mTx.trim(); if (t) { this.tr.push(['m', t]); Convo.add('j', t); logLine('i', 'Josi: ' + t); App.josiSays = { text: t, until: performance.now() + Math.max(5000, t.length * 75) }; } this.mTx = ''; }
     while (this.tr.length > 20) this.tr.shift(); App.dirty = true;
   },
   endTurn() {
@@ -2993,7 +3071,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (n === 'iniciar_viaje') { if (!App.connected) return 'no hay conexión con el auto'; if (App.trip) return 'ya hay un viaje en curso'; runAction('iniciar_viaje'); return 'iniciado'; }
     if (n === 'terminar_viaje') { if (!App.trip) return 'no hay un viaje en curso'; runAction('terminar_viaje'); return 'terminado'; }
     if (n === 'terminar_conversacion') { this.closing = true; return 'ok'; }
-    if (n === 'recordar') return Memory.add(a.dato) ? 'anotado' : 'no se pudo guardar';
+    if (n === 'recordar') return Memory.add(a.dato, a.persona || People.who()) ? 'anotado' : 'no se pudo guardar';
     if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
     if (n === 'registrar_persona') { if (!People.add(a.nombre, a.relacion, a.nota)) return 'nombre no válido'; People.setSpeaker(a.nombre); return 'anotado'; }
     if (n === 'quien_habla') { People.setSpeaker(a.nombre); return 'ok'; }
@@ -3067,7 +3145,7 @@ const Talk = {
       const r = await askAI(q); App.thinking = false; App.dirty = true;
       if (r) {
         if (r.action) runAction(r.action);
-        if (r.mem) Memory.add(r.mem); if (r.forget) Memory.forget(r.forget); applyExtras(r);
+        if (r.mem) Memory.add(r.mem, People.who()); if (r.forget) Memory.forget(r.forget); applyExtras(r);
         let say = r.say;
         if ((r.buscar || NEEDS_WEB.test(q)) && S.search !== false && !r.action) {
           const filler = Josi.on ? speakAwait(r.buscar && r.say ? r.say : 'Déjame ver eso.') : Promise.resolve();
@@ -3339,7 +3417,7 @@ function finishTrip(reason) {
   if (sum.durS < 20 && sum.km < 0.05) { toast('Viaje muy corto: no se guardó'); return; }
   assignPlaces(sum);
   sum.route = suggestRoute(sum) || (sum.fromName && sum.toName ? `${sum.fromName} → ${sum.toName}` : '');
-  App.trips.unshift(sum); if (App.trips.length > 300) App.trips.length = 300;
+  App.trips.unshift(sum); if (App.trips.length > 300) App.trips.length = 300; try { Convo.tripNote({ start: sum.start, end: sum.end, sim: sum.sim, km: sum.km, kmpl: sum.kmpl, score: sum.score, dest: App.dest }); } catch (e) {}
   saveTrips(); App.selTrip = sum.id;
   showTripSummary(sum, reason);
   Josi.tripSummary(sum);
@@ -4099,7 +4177,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.5 · 9 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.6 · 9 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -4139,6 +4217,11 @@ function viewSettings() {
     <div class="f"><span>Activar voz en vivo <span class="d">Al tocar la esfera o el 🎙 se abre la conversación en vivo</span></span><input type="checkbox" id="sLive" ${S.live ? 'checked' : ''}></div>
     <div class="f"><span>Voz de Josi</span><select id="sLiveVoice">${['Charon', 'Orus', 'Fenrir', 'Puck'].map(v => `<option value="${v}" ${(S.liveVoice || 'Charon') === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="sLiveTest">${Live.on ? 'Terminar voz en vivo' : 'Probar voz en vivo'}</button></div>
+  </section>
+  <section class="card form"><div class="card-h">${ico('voice')}Memoria de conversaciones</div>
+    <div class="f"><span>Recordar lo que hablamos <span class="d">Guarda las charlas solo en este aparato para retomarlas otro día. Josi las usa con discreción y puedes decirle «olvida lo de…»</span></span><input type="checkbox" id="sConvo" ${Convo.on ? 'checked' : ''}></div>
+    ${(() => { const st = Convo.stats(); return `<p class="muted">${st.s} charla(s) · ${st.m} mensajes recientes · ${st.t} nota(s) de viajes.${S.lastBackup ? ' Último respaldo: ' + Convo.when(S.lastBackup) + '.' : ' Aún no haces un respaldo.'}</p>`; })()}
+    <div class="actions" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn" id="cvMd">Exportar a Obsidian (.md)</button><button class="btn" id="cvDel">Borrar charlas</button></div>
   </section>
   <section class="card form"><div class="card-h">Compañero y personas</div>
     <div class="f"><span>Nombre del asistente <span class="d">Con este nombre lo llamas; también puedes decirle «ahora te llamarás…»</span></span><input type="text" id="sBot" maxlength="18" value="${esc(botName())}"></div>
@@ -4236,6 +4319,9 @@ function bindSettings() {
   document.querySelectorAll('[data-pdel]').forEach(b => b.onclick = () => { People.list.splice(+b.dataset.pdel, 1); People.save(); re(); });
   $('#pAdd').onclick = () => { if (People.add($('#pNew').value, $('#pRel').value)) { toast('Anotado'); re(); } else toast('Escribe un nombre'); };
   document.querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { Memory.list.splice(+b.dataset.mdel, 1); Memory.save(); re(); });
+  $('#sConvo').onchange = e => { Convo.d.on = e.target.checked; Convo.save(); toast(e.target.checked ? 'Josi recordará las charlas' : 'Ya no se guardan charlas nuevas'); };
+  $('#cvMd').onclick = () => { const txt = Convo.md(); try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/markdown' })); a.download = 'josi-memoria-' + new Date().toISOString().slice(0, 10) + '.md'; document.body.appendChild(a); a.click(); a.remove(); S.lastBackup = Date.now(); saveSettings(); toast('Archivo listo para Obsidian'); } catch (err) { navigator.clipboard?.writeText(txt).then(() => toast('Copiado: pégalo en una nota de Obsidian')).catch(() => toast('No se pudo exportar aquí')); } };
+  $('#cvDel').onclick = async () => { if (await confirmBox('Borrar charlas', 'Se borrarán las charlas y notas de viajes guardadas en este aparato. Los datos de la memoria y las personas se mantienen.', 'Borrar', true)) { Convo.d.sessions = []; Convo.d.trips = []; Convo.save(); re(); } };
   $('#memAdd').onclick = () => { if (Memory.add($('#memNew').value)) { toast('Anotado'); re(); } else toast('No pude guardar eso'); };
   if ($('#memClear')) $('#memClear').onclick = () => { if (confirm('¿Borrar todo lo que Josi recuerda?')) { Memory.list = []; Memory.save(); re(); } };
   $('#sSearch').onchange = e => { S.search = e.target.checked; saveSettings(); };
@@ -4277,14 +4363,15 @@ function bindSettings() {
     if (!(real > 0) || !(est > 0.5)) { toast('Hace falta más manejo desde la marca para calibrar'); return; }
     S.calib = +clamp(S.calib * real / est, 0.7, 1.3).toFixed(3); S.tankMark = Date.now(); saveSettings(); toast('Nuevo factor: ' + fmt(S.calib, 3)); re();
   };
-  const backup = () => JSON.stringify({ app: 'EcoDrive', v: 2, exported: new Date().toISOString(), settings: Object.assign({}, S, { azKey: '', aiKey: '' }), trips: App.trips, places: Places.list, hazards: Hazards.list, memory: Memory.list, people: People.list });
-  $('#bCopy').onclick = async () => { const txt = backup(); try { await navigator.clipboard.writeText(txt); toast('Respaldo copiado: pégalo en una nota o correo'); } catch (e) { const ta = $('#bTxt'); ta.classList.remove('hidden'); ta.value = txt; ta.select(); toast('Selecciona y copia el texto de abajo'); } };
-  if ($('#bDown')) $('#bDown').onclick = () => { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([backup()], { type: 'application/json' })); a.download = 'ecodrive-respaldo-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast('Descarga no disponible aquí: usa «Copiar respaldo»'); } };
+  const backup = () => JSON.stringify({ app: 'EcoDrive', v: 2, exported: new Date().toISOString(), settings: Object.assign({}, S, { azKey: '', aiKey: '' }), trips: App.trips, places: Places.list, hazards: Hazards.list, memory: Memory.list, people: People.list, convo: Convo.d });
+  $('#bCopy').onclick = async () => { const txt = backup(); try { await navigator.clipboard.writeText(txt); S.lastBackup = Date.now(); saveSettings(); toast('Respaldo copiado: pégalo en una nota o correo'); } catch (e) { const ta = $('#bTxt'); ta.classList.remove('hidden'); ta.value = txt; ta.select(); toast('Selecciona y copia el texto de abajo'); } };
+  if ($('#bDown')) $('#bDown').onclick = () => { try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([backup()], { type: 'application/json' })); a.download = 'ecodrive-respaldo-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove(); S.lastBackup = Date.now(); saveSettings(); } catch (e) { toast('Descarga no disponible aquí: usa «Copiar respaldo»'); } };
   $('#bImp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { const j = JSON.parse(await f.text()); const ts = Array.isArray(j) ? j : j.trips; if (!Array.isArray(ts)) throw new Error('formato');
       const ids = new Set(App.trips.map(t => t.id)); let n = 0; for (const t of ts) if (t && t.id && !ids.has(t.id)) { App.trips.push(t); n++; }
-      if (Array.isArray(j.memory)) for (const m of j.memory) if (m && m.t) Memory.add(m.t);
+      if (Array.isArray(j.memory)) for (const m of j.memory) if (m && m.t) Memory.add(m.t, m.p);
+      if (j.convo) { const c = Convo.merge(j.convo); if (c) toast(c + ' charla(s) recuperada(s)'); }
       if (Array.isArray(j.people)) for (const p of j.people) if (p && p.name) People.add(p.name, p.rel, p.nota);
       App.trips.sort((a, b) => b.start - a.start); saveTrips(); toast(`${n} viaje(s) importado(s)`); re();
     } catch (err) { errorBox('No se pudo importar', 'El archivo no es un respaldo válido de EcoDrive.'); }
@@ -4384,6 +4471,8 @@ function boot() {
   $$('#tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
   document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('button,.pill,.item,summary,.seg button'); if (!t || t.disabled) return; if (!t.closest('#tabs')) Snd.play('tick'); }, true);
   Snd.night(); setInterval(() => Snd.night(), 300000);
+  try { navigator.storage?.persist?.(); } catch (e) {}
+  setTimeout(() => { try { if ((Memory.list.length || Convo.d.sessions.length) && (!S.lastBackup || Date.now() - S.lastBackup > 14 * 86400000)) toast('Tip: haz un respaldo en Ajustes para no perder la memoria de Josi'); } catch (e) {} }, 9000);
   const mi = () => Snd.moveInd(true); mi(); setTimeout(mi, 400); window.addEventListener('resize', mi); window.addEventListener('orientationchange', () => setTimeout(mi, 250)); document.fonts?.ready?.then(mi); setInterval(() => Snd.chips(), 700);
   $('#connBtn').onclick = showConnect;
   $('#brandCar').src = CAR_IMG;
