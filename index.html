@@ -2689,6 +2689,12 @@ const Memory = {
   },
   forget(q) { const k = normName(q); if (k.length < 3) return 0; const n = this.list.length; this.list = this.list.filter(m => !normName(m.t).includes(k)); this.save(); const c = typeof Convo !== 'undefined' ? Convo.forget(q) : 0; return n - this.list.length + c; },
   ctx() { return this.list.slice(0, 25).map(m => m.p ? m.p + ': ' + m.t : m.t); },
+  pick(q, n) {
+    const fmt = m => m.p ? m.p + ': ' + m.t : m.t, w = normName(q || '').split(/[^a-z0-9ñ]+/).filter(x => x.length >= 4);
+    const sc = this.list.map((m, i) => ({ m, i, s: w.reduce((a, x) => a + (normName(m.t + ' ' + (m.p || '')).includes(x) ? 1 : 0), 0) }));
+    const rel = sc.filter(x => x.s).sort((a, b) => b.s - a.s || a.i - b.i).slice(0, n), ids = new Set(rel.map(x => x.i));
+    return [...rel, ...sc.filter(x => !ids.has(x.i)).slice(0, Math.max(0, n - rel.length))].map(x => fmt(x.m));
+  },
   about(place) { const w = normName(place).split(/\s+/).filter(x => x.length >= 4); if (!w.length) return []; return this.list.filter(m => { const t = normName(m.t); return w.some(x => t.includes(x)); }).slice(0, 3).map(m => m.t); },
 };
 /* ---------- Memoria de conversaciones (solo en este aparato) ---------- */
@@ -2723,10 +2729,10 @@ const Convo = {
     this.d.trips = this.d.trips.filter(t => !normName(t.t).includes(k)); if (n) this.save(); return n;
   },
   when(ts) { const dd = Math.round((Date.now() - ts) / 86400000); return dd <= 0 ? 'hoy' : dd === 1 ? 'ayer' : dd < 7 ? 'hace ' + dd + ' días' : new Date(ts).toLocaleDateString(LOC, { day: 'numeric', month: 'short' }); },
-  ctx(q) {
+  ctx(q, mode, trips) {
     if (!this.on) return undefined;
     const sim = this.simNow(), all = this.d.sessions.filter(x => !!x.sim === sim), cur = this.d.sessions[0];
-    const prev = all.filter(x => x !== cur || Date.now() - x.last > 120000).slice(0, 2).map(x => ({
+    const prev = mode === 'rel' ? [] : all.filter(x => x !== cur || Date.now() - x.last > 120000).slice(0, 2).map(x => ({
       cuando: this.when(x.ts), con: x.who.length ? x.who.join(', ') : undefined,
       resumen: x.turns.length ? x.turns.filter(t => !t.sens).slice(-6).map(t => (t.r === 'u' ? (t.p || 'Él') : 'Josi') + ': ' + t.t.slice(0, 90)).join(' | ') : (x.topics || undefined) })).filter(x => x.resumen);
     const words = normName(q || '').split(/[^a-z0-9ñ]+/).filter(w => w.length >= 4), rel = [];
@@ -2736,7 +2742,7 @@ const Convo = {
       if (sc >= (words.length > 2 ? 2 : 1)) rel.push({ sc, o: { cuando: this.when(t.ts), quien: t.r === 'u' ? (t.p || 'él') : 'Josi', dijo: t.t.slice(0, 140), sensible: t.sens ? 'sí: solo si él lo vuelve a tocar' : undefined } });
     }
     rel.sort((a, b) => b.sc - a.sc);
-    const out = { charlas_previas: prev.length ? prev : undefined, recuerdos_relacionados: rel.length ? rel.slice(0, 3).map(r => r.o) : undefined, viajes_recientes: this.d.trips.filter(t => !!t.sim === sim).slice(0, 3).map(t => t.t) };
+    const out = { charlas_previas: prev.length ? prev : undefined, recuerdos_relacionados: rel.length ? rel.slice(0, 3).map(r => r.o) : undefined, viajes_recientes: mode === 'rel' && !trips ? [] : this.d.trips.filter(t => !!t.sim === sim).slice(0, 3).map(t => t.t) };
     return out.charlas_previas || out.recuerdos_relacionados || out.viajes_recientes.length ? out : undefined;
   },
   tripNote(t) {
@@ -2797,7 +2803,7 @@ const People = {
     this.save(); return true;
   },
   del(n) { const k = normName(n); const c = this.list.length; this.list = this.list.filter(p => normName(p.name) !== k); this.save(); return c - this.list.length; },
-  ctx() { return this.list.map(p => ({ nombre: p.name, relacion: p.rel || undefined, nota: p.nota || undefined })); },
+  ctx(full) { return this.list.map(p => full ? ({ nombre: p.name, relacion: p.rel || undefined, nota: p.nota || undefined }) : ({ nombre: p.name, relacion: p.rel || undefined })); },
   setSpeaker(n) { n = cleanName(n); if (!n) return; const p = this.find(n); this.speaker = p ? p.name : n; this.speakerT = Date.now(); },
   who() { return this.speaker && Date.now() - this.speakerT < 600000 ? this.speaker : null; },
 };
@@ -2828,14 +2834,42 @@ const Usage = {
   liveSec(x) { this.roll(); this.d.live += x; this.save(); },
   rpm() { const n = Date.now(); this.ts = this.ts.filter(t => n - t < 60000); return this.ts.length; },
 };
+/* ---------- Contexto dinámico: Josi manda más o menos según lo que se habla ---------- */
+const CTX_RE = {
+  recall: /\b(te acuerdas|recuerdas|acuerdate|lo que (te )?(dije|hable|hablamos|conversamos|comentamos|conte)|me dijiste|te dije|te conte|ayer|anoche|antier|anteayer|la otra vez|el otro dia|la semana pasada|hace (unos )?dias|de que hablamos|sabes de mi|que sabes|que recuerdas)\b/,
+  car: /\b(consum\w*|gast\w*|litros?|combustible|gasolina|bencina|nafta|km|kilomet\w*|viaj\w*|rutas?|rendimiento|velocidad|rpm|revoluciones|temperatura|turbo|tanque|puntaje|meta|promedio|cuanto|cuantos|cuanta|motor|aceite|llantas?|neumatic\w*|presion|diagnos\w*|fallas?|codigos?|bateria|marcha|bache|ahorr\w*|eficien\w*|manej\w*|mes|semana|hoy|costo|cuesta|soles|dolares|esfuerzo|suavidad)\b/,
+  place: /\b(donde|cerca|lugar|lugares|restaurante|grifo|gasolinera|estacion|tienda|hospital|banco|farmacia|aqui|alrededor|direccion|como llego|mapa|calle|avenida|casa|trabajo|oficina)\b/,
+  deep: /\b(explic\w*|cuentame|profundiz\w*|detall\w*|mas sobre|sigue|continua|hablemos|platica\w*|conversemos)\b/,
+  people: /\b(esposa|esposo|mujer|hij[oa]s?|familia|amig[oa]s?|mama|papa|herman[oa]|novi[oa]|quien soy|quien es|quien habla|pasajer\w*)\b/,
+};
+function ctxPlan(q) {
+  const t = normName(q || ''), w = t.split(/[^a-z0-9ñ]+/).filter(Boolean);
+  const recall = CTX_RE.recall.test(t), deep = CTX_RE.deep.test(t), car = CTX_RE.car.test(t);
+  const nm = People.list.some(p => { const n = normName(p.name); return n.length >= 3 && t.includes(n); });
+  const people = recall || nm || CTX_RE.people.test(t);
+  const place = recall || CTX_RE.place.test(t) || Places.list.some(p => { const n = normName(p.name); return !p.sim && n.length >= 3 && t.includes(n); });
+  const cont = w.length <= 3 || /^(y|si|no|eso|ok|dale|hazlo|claro|ya|bueno|entonces|pero|porque)\b/.test(t);
+  const first = AI_HIST.length === 0;
+  const hist = recall || deep ? 16 : cont ? 12 : 8;
+  const mem = recall ? 25 : people || deep ? 12 : 6;
+  const convo = recall || first ? 'full' : 'rel';
+  const tag = [recall && 'recuerdo', car && 'auto', place && 'lugar', people && 'personas', deep && 'profundo', cont && 'corto', first && 'inicio'].filter(Boolean).join('+') || 'casual';
+  return { recall, car: car || recall, place, people, deep, cont, first, hist, mem, convo, tag };
+}
 function buildCtx(q) {
-  const tr = App.trip, V = App.vals, d = App.lastD, today = dayStats(startOf('day')), month = dayStats(startOf('month'));
+  const P = q == null ? { car: true, place: true, people: true, mem: 25, convo: 'full', hist: 16, tag: 'completo' } : ctxPlan(q);
+  App.ctxPlan = P;
+  const tr = App.trip, V = App.vals, d = App.lastD, today = dayStats(startOf('day')), month = P.car ? dayStats(startOf('month')) : null;
+  const near = Poi.cur && performance.now() - Poi.curT < 600000;
   const ctx = { hora: new Date().toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }), conductor: S.userName || 'Edwin', auto: 'Ford Fusion SE 2018, motor 2.0 EcoBoost turbo',
     unidad: Units.econLabel(), moneda: S.currency, meta: +Units.econ(goalKmpl()).toFixed(1), promedio_habitual: +Units.econ(S.baseKmpl || 6.5).toFixed(1),
     ahora: d ? { velocidad_kmh: Math.round(d.speed), rpm: Math.round(d.rpm), temp_motor_c: V.coolant != null ? Math.round(V.coolant) : null, turbo_bar: d.boost != null ? +d.boost.toFixed(2) : null, consumo_L_h: d.lphSm != null ? +d.lphSm.toFixed(2) : null, tanque_pct: V.fuel != null ? Math.round(V.fuel) : null } : null,
     viaje: tr ? { km: +tr.dist.toFixed(1), litros: +tr.fuel.toFixed(2), rendimiento: tr.fuel > 0.02 ? +Units.econ(tr.dist / tr.fuel).toFixed(1) : null, minutos: Math.round(tr.time / 60), puntaje: tr.liveScore(), destino: App.dest } : null,
-    hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) }, mes: { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) },
-    lugares: Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12), historial: historyCtx(), lugar_cercano: Poi.cur && performance.now() - Poi.curT < 600000 ? Poi.cur : null, memoria: Memory.ctx(), charlas: Convo.ctx(q), personas: People.ctx(), habla_ahora: People.who(), recuerdos_del_lugar: Poi.cur && performance.now() - Poi.curT < 600000 ? Memory.about(Poi.cur.nombre) : [], ubicacion: (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })() };
+    hoy: { km: +today.km.toFixed(1), litros: +today.L.toFixed(2), costo: +today.cost.toFixed(2) },
+    habla_ahora: People.who(), personas: People.ctx(P.people), memoria: Memory.pick(q, P.mem), charlas: Convo.ctx(q, P.convo, P.car) };
+  if (P.car) { ctx.mes = { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) }; ctx.historial = historyCtx(); }
+  if (P.place || near) { ctx.lugares = Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12); ctx.lugar_cercano = near ? Poi.cur : null; ctx.recuerdos_del_lugar = near ? Memory.about(Poi.cur.nombre) : []; }
+  if (P.place) ctx.ubicacion = (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })();
   return ctx;
 }
 const AI_HIST = [];
@@ -2853,7 +2887,7 @@ Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bach
 Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
 ${companyRules(false)}
 Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":""}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-16), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' } }, required: ['say'] } } };
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -2948,9 +2982,9 @@ const Live = {
   useSearch: true, on: false, ready: false, want: false, closing: false, renewing: false, ws: null, ctx: null, stream: null, node: null, zero: null, gain: null, analyser: null, model: null,
   nextT: 0, srcs: new Set(), aiSpeaking: false, tr: [], uTx: '', mTx: '', micLevel: 0, last: 0, t0: 0, tries: 0, q: Promise.resolve(), pend: new Float32Array(0), rate: 48000, idle: null, prevA: null, prevB: null,
   system() {
-    const name = S.userName || 'Edwin', mem = Memory.ctx(), chr = Convo.ctx(''), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
+    const name = S.userName || 'Edwin', mem = Memory.pick('', 10), chr = Convo.ctx('', 'full'), rec = this.tr.slice(-8).map(t => (t[0] === 'u' ? name : 'Josi') + ': ' + t[1]).join('\n');
     return `Eres ${botName()}, el copiloto del auto de ${name} (Ford Fusion SE 2018, 2.0 EcoBoost) y su compañero de conversación, hablando por voz en tiempo real. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano natural, como en una charla de carro: sin muletillas de asistente, sin repetir la pregunta, sin listas ni tono de manual. Normalmente una o dos frases; si te pide que te extiendas o profundices, habla más, en partes naturales. Si te interrumpe, calla y escúchalo. Si no se entiende lo que dijo, pídele que lo repita en una frase corta. Puedes conversar de cualquier tema. Tienes búsqueda en Google: úsala cuando pregunte por noticias, clima, tráfico, precios, resultados, horarios o datos de un lugar o negocio, y no inventes nada de eso. ${(() => { const l = buildCtx().ubicacion; return l ? 'Ubicación aproximada del conductor: latitud ' + l.lat + ', longitud ' + l.lon + '.' : 'No sabes dónde está; si hace falta, pregúntale la ciudad.'; })()} Ahora es ${new Date().toLocaleString(LOC, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.
-Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Puedes cambiar la pantalla con mostrar_pantalla (en_vivo, viajes, rutas, diagnostico, ajustes) cuando lo pida; si pide cambiar de pestaña sin decir cuál, pregúntale en una frase qué quiere ver. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
+Si te preguntan por algo del pasado o de lo que ya hablaron y no lo ves aquí, llama a buscar_en_recuerdos con el tema antes de decir que no lo sabes. Para cifras en vivo del auto, del viaje, del gasto o de sus hábitos llama a la herramienta datos_del_auto y usa solo lo que devuelva; no inventes cifras. Usa marcar_bache, iniciar_viaje o terminar_viaje solo si lo pidió claramente. Puedes cambiar la pantalla con mostrar_pantalla (en_vivo, viajes, rutas, diagnostico, ajustes) cuando lo pida; si pide cambiar de pestaña sin decir cuál, pregúntale en una frase qué quiere ver. Si se despide o ya no quiere hablar, despídete breve y llama a terminar_conversacion. Si te pide recordar algo, o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias), llama a recordar con una frase corta en tercera persona y confirma con "anotado"; si pide olvidar algo, llama a olvidar. Nunca guardes claves, contraseñas ni datos de tarjetas o de salud.
 ${companyRules(true)}
 ${People.list.length ? 'Personas que conoces: ' + People.list.map(p => p.name + (p.rel ? ' (' + p.rel + ')' : '') + (p.nota ? ', ' + p.nota : '')).join('; ') + '.' : 'Todavía no conoces a nadie más que a él.'}
 ${mem.length ? 'Lo que recuerdas de él: ' + mem.join('; ') + '.' : ''}
@@ -2961,6 +2995,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   decls() {
     return [{ functionDeclarations: [
       { name: 'datos_del_auto', description: 'Datos en vivo del auto, del viaje en curso, del gasto de hoy y del mes, rutas y hábitos de manejo del conductor.' },
+      { name: 'buscar_en_recuerdos', description: 'Busca en tu memoria y en charlas anteriores lo relacionado con un tema, persona o lugar.', parameters: { type: 'OBJECT', properties: { tema: { type: 'STRING', description: 'palabras clave de lo que quieres recordar' } }, required: ['tema'] } },
       { name: 'mostrar_pantalla', description: 'Cambia la pantalla de la app que ve el conductor.', parameters: { type: 'OBJECT', properties: { pantalla: { type: 'STRING', description: 'en_vivo, viajes, rutas, diagnostico o ajustes' } }, required: ['pantalla'] } },
       { name: 'marcar_bache', description: 'Marca un bache, hueco o rompemuelle en la posición actual.' },
       { name: 'iniciar_viaje', description: 'Inicia el registro de un viaje.' },
@@ -3082,6 +3117,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   },
   runTool(n, a) {
     if (n === 'datos_del_auto') return buildCtx();
+    if (n === 'buscar_en_recuerdos') { const tema = String(a.tema || ''); return { memorias: Memory.pick(tema, 25), charlas: Convo.ctx(tema, 'full', true) || 'sin nada relacionado', personas: People.ctx(true) }; }
     if (n === 'mostrar_pantalla') { const t = navTarget(String(a.pantalla || '')); if (!t) return 'pantalla desconocida; opciones: en_vivo, viajes, rutas, diagnostico, ajustes'; setTab(t); return 'mostrando ' + t; }
     if (n === 'marcar_bache') { runAction('marcar_bache'); return 'marcado'; }
     if (n === 'iniciar_viaje') { if (!App.connected) return 'no hay conexión con el auto'; if (App.trip) return 'ya hay un viaje en curso'; runAction('iniciar_viaje'); return 'iniciado'; }
@@ -4210,7 +4246,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.7 · 9 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.8 · 9 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
