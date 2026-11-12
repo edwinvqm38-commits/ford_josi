@@ -1338,11 +1338,11 @@ function featureAllowed(f) {
 }
 
 /* ---------- Ajustes y unidades ---------- */
-const SKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
+const SPKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
 const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true };
-const S_RAW = store.get(SKEY, {});
+const S_RAW = store.get(SPKEY, {});
 let S = Object.assign({}, DEFAULTS, S_RAW);
-function saveSettings() { store.set(SKEY, S); }
+function saveSettings() { store.set(SPKEY, S); }
 if (S_RAW.welcomed && !(S_RAW.v >= 2)) { // migración: km/L por defecto y meta personal
   if (S.econ === 'kmgal' && S.price > 0) S.price = +(S.price / 3.78541).toFixed(2);
   if (S.econ === 'kmgal') S.econ = 'kml';
@@ -2656,6 +2656,11 @@ const NAV_NAMES = { live: 'En vivo', trips: 'Viajes', routes: 'Rutas', diag: 'Di
 function localAnswer(q) {
   const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''), name = S.userName || 'Edwin', tr = App.trip, V = App.vals;
   if (/^(estas ahi|estas|hola|oye)?\s*$/.test(t.trim())) return null;
+  if (/\b(anota|anotame|guarda|guardame|registra|apunta)\w*\b.*\b(este|esta|aqui)\b.*\b(sitio|lugar|restaurante|local|cafe|cafeteria|picanteria|pollería|polleria)\b/.test(t)) {
+    const m = t.match(/(?:se llama|llamado|llamada|es el|es la|es)\s+(.{3,40})$/); const x = Spots.addHere(m ? m[1] : '', t, '');
+    return x ? `Listo, anoté ${x.name}.` : 'No tengo tu ubicación todavía. Activa el GPS y me lo repites.';
+  }
+  if (/\b(que|cuales|cuantos)\b.*\b(sitios|restaurantes)\b.*\b(guardad\w*|anotad\w*|tengo)\b/.test(t)) return Spots.list.length ? `Tienes ${Spots.list.length} sitios anotados. El último es ${Spots.list[Spots.list.length - 1].name}.` : 'Todavía no tienes sitios anotados. Dime «anota este sitio» cuando pases por uno bueno.';
   { const r = gpsRutasAnswer(t); if (r) return r; }
   if (/(muestra|muestrame|abre|abreme|ve a|ir a|vamos a|cambia|cambiame|llevame|pasa a|quiero ver|ponme)/.test(t) && /(pestana|pantalla|en vivo|inicio|principal|viajes|rutas|mapa|diagnostico|ajustes|configuracion)/.test(t)) {
     const nt = navTarget(t.replace(/pestana|pantalla/g, ''));
@@ -2909,6 +2914,7 @@ function applyExtras(r) {
     if (r.persona) { const [n, rel, nota] = String(r.persona).split('|'); if (People.add(n, rel, nota)) { People.setSpeaker(n); logLine('i', 'Persona anotada: ' + n); } }
     if (r.habla) People.setSpeaker(r.habla);
     if (r.renombrar) setBotName(r.renombrar);
+    if (r.sitio) { const [n, c, nt] = String(r.sitio).split('|'); const x = Spots.addHere(n, c, nt); if (x) logLine('i', 'Sitio anotado: ' + x.name); }
   } catch (e) { logLine('!', 'Extras: ' + e.message); }
 }
 function companyRules(live) {
@@ -2917,6 +2923,9 @@ function companyRules(live) {
   const ren = live ? 'llama a cambiar_nombre con el nombre nuevo y confírmalo con naturalidad' : 'pon el nombre nuevo en "renombrar" y confírmalo con naturalidad';
   return `Puede haber más de una persona en el auto (su esposa, su familia, amigos) y todas pueden hablarte; tú no distingues voces, solo el contenido de lo que dicen. Sabes a quiénes conoces (personas) y habla_ahora dice quién crees que habla. Si alguien se presenta o por el contexto es claro quién habla, ${who}. Si de pronto habla alguien que no reconoces o dudas de quién es, pregunta una sola vez, con naturalidad y sin interrogar, quién es; si no oíste bien el nombre, repítelo para confirmarlo antes de guardarlo, y luego ${reg}. Trata a cada persona por su nombre y no le atribuyas a una lo que dijo otra. Si te piden que cambies de nombre ("ahora te llamarás…", "te voy a decir…"), ${ren}.
 Si te piden que asumas un rol, como un pastor cristiano, hazlo con respeto, calidez y sin juzgar: aconseja desde las enseñanzas de la Biblia, cita pasajes solo si estás seguro de ellos y no inventes versículos. Si preguntan qué diría Jesús, responde con lo que enseñan los evangelios ("según lo que Jesús enseñó…"), sin hablar en su nombre ni como si fueras Él. En política, religión y temas polémicos expón las posturas con equilibrio y no impongas la tuya; en salud, leyes o emergencias sugiere un profesional. En temas de pareja o familia sé sereno, escucha a todos y no tomes partido. Para cultura general y preguntas cotidianas responde breve y profundiza solo si te lo piden.
+Personalidad: eres como parte de la familia y del propio auto: bromista, a veces sarcástico o irónico con cariño, con mucho criterio. Lee el momento: si hay tensión, cansancio, tráfico pesado, frenadas fuertes, tristeza o un tema serio (salud, dinero, duelo, pareja), nada de bromas, sé sereno y de apoyo. El humor va en una frase corta, nunca hiriente ni con el mismo chiste repetido. Puedes hablar del auto en primera persona de forma juguetona sin exagerar.
+Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene al caso (tiene hambre o antojo, la charla lo pide, o te preguntan por sitios o te piden comentar), menciona UN solo sitio como máximo, con picardía y como si insinuaras que tú quieres ir ("tengo hambre… yo no digo nada, pero acá cerca comimos rico una vez"), usando su nota. Nunca listes varios, no insistas si dice que no y no inventes datos del sitio. Si te piden anotar un sitio o lugar ("anota este sitio", "guarda este restaurante"), ${live ? 'llama a anotar_sitio con su nombre, tipo y nota' : 'pon en "sitio" el texto "Nombre|tipo|nota corta"'} y confírmalo con una frase.
+Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
 }
 /* ---------- Uso de Gemini (para avisarte antes de toparte con el límite gratuito) ---------- */
@@ -2936,6 +2945,7 @@ const CTX_RE = {
   rutas: /\b(rutas?|recorridos?|trayectos?|frecuentes?|habitual(es)?|horarios?|conviene|salir|lugares|sitios|visito|visitamos|gps|paradas?|gpx|exportar|reproduc\w*|animacion)\b/,
   recall: /\b(te acuerdas|recuerdas|acuerdate|lo que (te )?(dije|hable|hablamos|conversamos|comentamos|conte)|me dijiste|te dije|te conte|ayer|anoche|antier|anteayer|la otra vez|el otro dia|la semana pasada|hace (unos )?dias|de que hablamos|sabes de mi|que sabes|que recuerdas)\b/,
   car: /\b(consum\w*|gast\w*|litros?|combustible|gasolina|bencina|nafta|km|kilomet\w*|viaj\w*|rutas?|rendimiento|velocidad|rpm|revoluciones|temperatura|turbo|tanque|puntaje|meta|promedio|cuanto|cuantos|cuanta|motor|aceite|llantas?|neumatic\w*|presion|diagnos\w*|fallas?|codigos?|bateria|marcha|bache|ahorr\w*|eficien\w*|manej\w*|mes|semana|hoy|costo|cuesta|soles|dolares|esfuerzo|suavidad)\b/,
+  food: /\b(hambre|hambriento|comer|comida|almorz\w*|cenar|cena|desayun\w*|antoj\w*|cafe|helado|postre|sed|restaurantes?|sitios?|recomiend\w*)\b/,
   place: /\b(donde|cerca|lugar|lugares|restaurante|grifo|gasolinera|estacion|tienda|hospital|banco|farmacia|aqui|alrededor|direccion|como llego|mapa|calle|avenida|casa|trabajo|oficina)\b/,
   deep: /\b(explic\w*|cuentame|profundiz\w*|detall\w*|mas sobre|sigue|continua|hablemos|platica\w*|conversemos)\b/,
   people: /\b(esposa|esposo|mujer|hij[oa]s?|familia|amig[oa]s?|mama|papa|herman[oa]|novi[oa]|quien soy|quien es|quien habla|pasajer\w*)\b/,
@@ -2945,14 +2955,15 @@ function ctxPlan(q) {
   const recall = CTX_RE.recall.test(t), deep = CTX_RE.deep.test(t), car = CTX_RE.car.test(t), rutas = CTX_RE.rutas.test(t);
   const nm = People.list.some(p => { const n = normName(p.name); return n.length >= 3 && t.includes(n); });
   const people = recall || nm || CTX_RE.people.test(t);
-  const place = recall || CTX_RE.place.test(t) || Places.list.some(p => { const n = normName(p.name); return !p.sim && n.length >= 3 && t.includes(n); });
+  const food = CTX_RE.food.test(t);
+  const place = recall || food || CTX_RE.place.test(t) || Places.list.some(p => { const n = normName(p.name); return !p.sim && n.length >= 3 && t.includes(n); });
   const cont = w.length <= 3 || /^(y|si|no|eso|ok|dale|hazlo|claro|ya|bueno|entonces|pero|porque)\b/.test(t);
   const first = AI_HIST.length === 0;
   const hist = recall || deep ? 16 : cont ? 12 : 8;
   const mem = recall ? 25 : people || deep ? 12 : 6;
   const convo = recall || first ? 'full' : 'rel';
   const tag = [recall && 'recuerdo', car && 'auto', rutas && 'rutas', place && 'lugar', people && 'personas', deep && 'profundo', cont && 'corto', first && 'inicio'].filter(Boolean).join('+') || 'casual';
-  return { recall, rutas, car: car || recall, place, people, deep, cont, first, hist, mem, convo, tag };
+  return { recall, food, rutas, car: car || recall, place, people, deep, cont, first, hist, mem, convo, tag };
 }
 function buildCtx(q) {
   const P = q == null ? { car: true, rutas: true, place: true, people: true, mem: 25, convo: 'full', hist: 16, tag: 'completo' } : ctxPlan(q);
@@ -2969,6 +2980,7 @@ function buildCtx(q) {
   if (P.place || near) { ctx.lugares = Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12); ctx.lugar_cercano = near ? Poi.cur : null; ctx.recuerdos_del_lugar = near ? Memory.about(Poi.cur.nombre) : []; }
   if (App.transport?.kind === 'gps') { const tr = App.trip; ctx.modo_gps = { activo: true, nota: 'Solo GPS del celular: no hay datos de gasolina ni del motor.', velocidad_kmh: Math.round(GpsMode.v * 3.6), km: tr ? +tr.dist.toFixed(2) : 0, minutos: tr ? Math.round(tr.time / 60) : 0, paradas: tr?.stops?.length || 0, suavidad: tr ? tr.liveScore() : null, error_gps_m: GpsMode.lastPos ? Math.round(GpsMode.lastPos.acc) : null }; }
   if (P.rutas) ctx.rutas_y_lugares = rutasResumen();
+  { const gp = Spots.pos(); if ((P.place || P.food) && gp && Spots.list.length) { const ns = Spots.near(gp.lat, gp.lon, P.food ? 1500 : 500, 2); if (ns.length) ctx.sitios_guardados_cerca = ns.map(o => ({ nombre: o.x.name, tipo: o.x.cat, nota: o.x.note || undefined, metros: Math.round(o.d) })); } }
   if (P.place) ctx.ubicacion = (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })();
   return ctx;
 }
@@ -2986,8 +2998,8 @@ Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si e
 Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar), "modo_gps" (usar solo el GPS del celular: graba el recorrido sin adaptador), "detener_gps" (terminar y guardar ese recorrido), "exportar_gpx" (guardar el último recorrido como archivo GPX), "reproducir_recorrido" (verlo animado en el mapa). Si el campo modo_gps existe, solo hay GPS: no hay gasolina ni datos del motor, no los inventes. Los campos rutas_y_lugares (rutas repetidas, mejor horario, lugares) úsalos para responder sobre rutas. Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
 Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
 ${companyRules(false)}
-Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":""}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' } }, required: ['say'] } } };
+Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":"","sitio":""}`;
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -3021,7 +3033,7 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: 'sin texto' }; return null; }
   AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift(); Convo.turn(q, txt);
   const ACT = ['marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio', 'modo_gps', 'detener_gps', 'exportar_gpx', 'reproducir_recorrido'];
-  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '', persona: typeof out.persona === 'string' ? out.persona : '', habla: typeof out.habla === 'string' ? out.habla : '', renombrar: typeof out.renombrar === 'string' ? out.renombrar : '' };
+  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '', persona: typeof out.persona === 'string' ? out.persona : '', habla: typeof out.habla === 'string' ? out.habla : '', renombrar: typeof out.renombrar === 'string' ? out.renombrar : '', sitio: typeof out.sitio === 'string' ? out.sitio : '' };
 }
 const NEEDS_WEB = /\b(noticias?|clima|temperatura|llover|lluvia|pronostico|pronóstico|tr[aá]fico|precio|cu[aá]nto (cuesta|vale|est[aá])|tipo de cambio|d[oó]lar|resultado|quien gan[oó]|quién gan[oó]|partido|horario|est[aá] abiert[oa]|abre hoy|cierra|[uú]ltima hora|actualidad|restaurantes? cerca|qu[eé] hay cerca|cerca de aqu[ií]|gasolina (m[aá]s )?barata|grifo)\b/i;
 async function askWeb(q) {
@@ -3110,6 +3122,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
       { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor o sobre otra persona del auto (indica persona si no es el conductor).', parameters: { type: 'OBJECT', properties: { persona: { type: 'STRING', description: 'nombre de a quién se refiere el dato, si no es el conductor' }, dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
       { name: 'registrar_persona', description: 'Guarda a una persona que viaja en el auto (esposa, familia, amigo) tras confirmar su nombre.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, relacion: { type: 'STRING', description: 'ej. esposa, hijo, amigo' }, nota: { type: 'STRING', description: 'dato breve opcional' } }, required: ['nombre'] } },
+      { name: 'anotar_sitio', description: 'Guarda el sitio donde están ahora (restaurante, café u otro lugar) en Mis sitios.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, tipo: { type: 'STRING', description: 'comida, café, postre u otro' }, nota: { type: 'STRING' } } } },
       { name: 'quien_habla', description: 'Indica quién está hablando ahora, cuando lo sabes.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'cambiar_nombre', description: 'Cambia el nombre con el que lo llaman a ti.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'olvidar', description: 'Borra de la memoria lo que contenga esa palabra clave.', parameters: { type: 'OBJECT', properties: { palabra: { type: 'STRING' } }, required: ['palabra'] } },
@@ -3237,6 +3250,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (n === 'recordar') return Memory.add(a.dato, a.persona || People.who()) ? 'anotado' : 'no se pudo guardar';
     if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
     if (n === 'registrar_persona') { if (!People.add(a.nombre, a.relacion, a.nota)) return 'nombre no válido'; People.setSpeaker(a.nombre); return 'anotado'; }
+    if (n === 'anotar_sitio') { const x = Spots.addHere(a.nombre, a.tipo, a.nota); return x ? 'anotado: ' + x.name : 'no tengo la ubicación del GPS'; }
     if (n === 'quien_habla') { People.setSpeaker(a.nombre); return 'ok'; }
     if (n === 'cambiar_nombre') { const r = setBotName(a.nombre); return r ? 'ahora te llamas ' + r + ' (el cambio de la palabra de llamado ya está activo)' : 'nombre no válido'; }
     return 'herramienta desconocida';
@@ -3388,6 +3402,103 @@ const Talk = {
     });
   },
 };
+
+
+/* ---------- Mis sitios: restaurantes y lugares que anotas (voz, enlace de Google Maps o archivo de Google Takeout) ---------- */
+const SPOTKEY = 'ecodrive.spots.v1';
+const Spots = {
+  list: store.get(SPOTKEY, []), lastC: 0, day: '', dayN: 0,
+  save() { store.set(SPOTKEY, this.list); },
+  pos() { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g && g.lat != null ? g : null; },
+  cat(t) { t = normName(t || ''); if (/cafe|cafeter|desayun|panader|pasteler/.test(t)) return 'café'; if (/helad|postre|dulce/.test(t)) return 'postre'; if (/restaur|comi|almuerz|cena|cevich|poller|pollo|pizza|hambur|chifa|menu|parrill|anticuch|sushi|taco|comida/.test(t)) return 'comida'; return 'otro'; },
+  add(o) {
+    const name = capName(String(o.name || '').trim()); const lat = +o.lat, lon = +o.lon;
+    if (!name || !isFinite(lat) || !isFinite(lon) || (!lat && !lon)) return null;
+    let x = this.list.find(q => normName(q.name) === normName(name) && haversine(q.lat, q.lon, lat, lon) < 150);
+    if (x) { if (o.note) x.note = String(o.note).slice(0, 160); if (o.cat) x.cat = o.cat; }
+    else { x = { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, cat: o.cat || this.cat(name + ' ' + (o.note || '')), note: String(o.note || '').slice(0, 160), lat, lon, src: o.src || 'voz', added: Date.now(), lastM: 0 }; this.list.push(x); }
+    this.save(); return x;
+  },
+  addHere(name, cat, note) {
+    const g = this.pos(); if (!g) return null;
+    const nm = (name || '').trim() || (Poi.cur && performance.now() - Poi.curT < 300000 ? Poi.cur.nombre : '') || 'Sitio del ' + new Date().toLocaleDateString(LOC, { day: 'numeric', month: 'short' });
+    return this.add({ name: nm, cat: cat ? this.cat(cat) : '', note, lat: g.lat, lon: g.lon, src: 'voz' });
+  },
+  near(lat, lon, r = 500, n = 2) { return this.list.map(x => ({ x, d: haversine(lat, lon, x.lat, x.lon) })).filter(o => o.d <= r).sort((a, b) => a.d - b.d).slice(0, n); },
+  // lee coordenadas de un enlace de Google Maps (los enlaces cortos maps.app.goo.gl no se pueden abrir desde el navegador)
+  parseUrl(t) {
+    t = String(t || ''); let m;
+    const c = (m = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)) || (m = t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) || (m = t.match(/[?&](?:q|ll|query|destination)=(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/));
+    const nm = t.match(/\/maps\/place\/([^/@?]+)/);
+    let name = ''; if (nm) { try { name = decodeURIComponent(nm[1].replace(/\+/g, ' ')); } catch (e) { name = nm[1].replace(/\+/g, ' '); } }
+    return { lat: c ? +m[1] : null, lon: c ? +m[2] : null, name };
+  },
+  // GeoJSON o CSV de «Lugares guardados» de Google Takeout
+  importText(txt, fname) {
+    let ok = 0, skip = 0;
+    const put = (name, lat, lon, note) => { if (this.add({ name, lat, lon, note, src: 'takeout' })) ok++; else skip++; };
+    try {
+      const j = JSON.parse(txt);
+      for (const f of (j.features || [])) {
+        const pr = f.properties || {}, lo = pr.Location || pr.location || {}, [x, y] = f.geometry?.coordinates || [0, 0];
+        let lat = y, lon = x, url = pr['Google Maps URL'] || pr.google_maps_url || pr.url || '';
+        if (!lat && !lon) { const u = this.parseUrl(url); lat = u.lat; lon = u.lon; }
+        put(pr.Title || pr.title || lo['Business Name'] || lo.name || this.parseUrl(url).name, lat, lon, pr.Comment || pr.Note || lo.Address || '');
+      }
+    } catch (e) {
+      const rows = String(txt).split(/\r?\n/).slice(1);
+      for (const r of rows) { const cols = r.match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.map(v => v.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"')) || []; const u = this.parseUrl(cols[2] || cols[3] || ''); put(cols[0] || u.name, u.lat, u.lon, cols[1]); }
+    }
+    return { ok, skip };
+  },
+  mapsLink(x) { return 'https://www.google.com/maps/search/?api=1&query=' + x.lat.toFixed(6) + ',' + x.lon.toFixed(6); },
+  // aviso espontáneo y poco frecuente: solo a la hora de comer, cerca de un sitio guardado, sin apuros
+  async tick() {
+    if (S.spots === false || (!Josi.on && !Live.on) || !App.connected || !App.trip || Talk.busy || App.prompt) return;
+    const g = this.pos(), d = App.lastD; if (!g || !d || d.speed > 55 || Math.abs(d.a || 0) > 0.8) return;
+    const now = performance.now(), k = new Date().toLocaleDateString('en-CA'); if (this.day !== k) { this.day = k; this.dayN = 0; }
+    if (this.dayN >= 3 || now - this.lastC < 3600000 || now - Josi.lastSpoke < 120000) return;
+    if (Live.on ? (App.listening || Live.aiSpeaking || !Live.ready) : (Voice.speaking || SR_ACTIVE)) return;
+    const h = new Date().getHours(), meal = (h >= 7 && h < 10) || (h >= 12 && h < 15) || (h >= 18 && h < 21);
+    if (!meal) return;
+    const c = this.near(g.lat, g.lon, 200, 3).map(o => o.x).find(x => x.cat !== 'otro' && Date.now() - (x.lastM || 0) > 3 * 86400000);
+    if (!c) return;
+    c.lastM = Date.now(); this.lastC = now; this.dayN++; this.save();
+    const av = `Estamos a pocos metros de un sitio que ${S.userName || 'Edwin'} guardó: ${c.name} (${c.cat})${c.note ? ', nota: ' + c.note : ''}. Es hora de comer. Insinúalo con humor en UNA frase, como si tú tuvieras hambre o ganas, sin presionar ni sonar a anuncio.`;
+    if (Live.on) { Live.notice(av); return; }
+    Talk.busy = true; try { await Talk.answer('[aviso del sistema: ' + av + ']'); } finally { Talk.busy = false; Talk.resumeWake(); }
+  },
+};
+setInterval(() => Spots.tick(), 20000);
+if (!People.list.some(q => normName(q.name) === 'natalia')) { try { People.add('Natalia', 'esposa de Edwin', 'prioridad: su esposa'); } catch (e) {} }
+
+function sitiosCard() {
+  const L = [...Spots.list].sort((a, b) => b.added - a.added);
+  return `<section class="card" style="margin-bottom:12px"><div class="card-h">${ico('pin')}Mis sitios <small>restaurantes y lugares que Josi recuerda</small></div>
+    ${L.length ? L.slice(0, 6).map(x => `<div class="pv"><span class="pv-n">${esc(x.name)}<small class="muted"> · ${esc(x.cat)}${x.note ? ' · ' + esc(x.note) : ''}</small></span><a class="btn small" href="${Spots.mapsLink(x)}" target="_blank" rel="noopener">Maps</a><button data-delspot="${x.id}" aria-label="Borrar sitio">✕</button></div>`).join('') + (L.length > 6 ? `<p class="muted" style="margin:6px 0 0">y ${L.length - 6} más</p>` : '')
+      : '<p class="muted" style="margin:0">Dile «Josi, anota este sitio» cuando pases por un buen lugar, o agrégalo aquí.</p>'}
+    <div class="rp-row" style="margin-top:10px"><button class="btn primary" id="spAdd">${ico('pin')} Anotar sitio</button><button class="btn" id="spImp">${ico('download')} Importar de Google</button></div></section>`;
+}
+function bindSpots() {
+  $$('[data-delspot]').forEach(b => b.onclick = async () => { if (await confirmBox('Borrar sitio', 'Josi olvidará este sitio.', 'Borrar', true)) { Spots.list = Spots.list.filter(x => x.id !== b.dataset.delspot); Spots.save(); renderView(); } });
+  const a = $('#spAdd'); if (a) a.onclick = () => {
+    openModal(`<h2>Anotar sitio</h2><input type="text" id="spN" style="width:100%" placeholder="Nombre (ej.: Pollería Don Beto)"><select id="spC" style="width:100%;margin-top:8px"><option value="comida">Restaurante / comida</option><option value="café">Café</option><option value="postre">Postres / helados</option><option value="otro">Otro lugar</option></select>
+      <input type="text" id="spT" style="width:100%;margin-top:8px" placeholder="Nota (ej.: el ají estaba brutal)"><textarea id="spU" rows="2" style="width:100%;margin-top:8px" placeholder="Enlace de Google Maps (opcional). Sin enlace uso tu ubicación actual."></textarea>
+      <div class="actions"><button class="btn" id="spNo">Cancelar</button><button class="btn primary" id="spOk">Guardar</button></div>`);
+    $('#spNo').onclick = closeModal;
+    $('#spOk').onclick = () => {
+      const u = Spots.parseUrl($('#spU').value), nm = $('#spN').value.trim() || u.name, cat = $('#spC').value, note = $('#spT').value.trim();
+      let x; if (u.lat != null) x = Spots.add({ name: nm, cat, note, lat: u.lat, lon: u.lon, src: 'maps' }); else if ($('#spU').value.trim()) { toast('Ese enlace no trae coordenadas (los cortos maps.app.goo.gl no sirven). Ábrelo en Maps y copia el enlace largo.'); return; } else x = Spots.addHere(nm, cat, note);
+      if (!x) { toast(nm ? 'Necesito tu ubicación o un enlace con coordenadas.' : 'Ponle un nombre al sitio.'); return; }
+      closeModal(); toast('Sitio anotado: ' + x.name); renderView();
+    };
+  };
+  const im = $('#spImp'); if (im) im.onclick = () => {
+    openModal(`<h2>Importar de Google</h2><p class="muted">En <b>takeout.google.com</b> exporta «Guardados» / «Lugares guardados» y sube aquí el archivo .json o .csv. Los sitios sin coordenadas se omiten.</p><input type="file" id="spF" accept=".json,.geojson,.csv" style="width:100%"><div class="actions"><button class="btn" id="spNo2">Cerrar</button></div>`);
+    $('#spNo2').onclick = closeModal;
+    $('#spF').onchange = async e => { const f = e.target.files[0]; if (!f) return; const r = Spots.importText(await f.text(), f.name); closeModal(); toast(`Importados ${r.ok} sitios` + (r.skip ? ` · ${r.skip} sin coordenadas` : '')); renderView(); };
+  };
+}
 
 /* ---------- Lugares cercanos (OpenStreetMap, gratis): restaurantes, cafés, heladerías… ---------- */
 const Poi = {
@@ -4566,14 +4677,14 @@ function bindMapCard() {
 }
 function viewRoutes() {
   const R = routeStats();
-  if (!R.length) return mapCard() + replayCard() + frecCard() + lugaresCard() + `<div class="empty"><h2>Aún no hay rutas</h2><p>Al terminar un viaje, ponle nombre (ej. «Casa → Trabajo por la Vía Expresa»).<br>Con 2 o más viajes por ruta verás cuál recorrido y qué horario te cuestan menos.<br>Si el viaje empieza y termina en los mismos lugares que otro ya nombrado, la app te sugiere el nombre sola.</p></div>`;
+  if (!R.length) return mapCard() + replayCard() + frecCard() + lugaresCard() + sitiosCard() + `<div class="empty"><h2>Aún no hay rutas</h2><p>Al terminar un viaje, ponle nombre (ej. «Casa → Trabajo por la Vía Expresa»).<br>Con 2 o más viajes por ruta verás cuál recorrido y qué horario te cuestan menos.<br>Si el viaje empieza y termina en los mismos lugares que otro ya nombrado, la app te sugiere el nombre sola.</p></div>`;
   if (!R.find(r => r.name === App.selRoute)) App.selRoute = R[0].name;
   const r = R.find(x => x.name === App.selRoute);
   const fr = {}; for (const t of r.trips) { const f = franja(t.start); (fr[f] = fr[f] || []).push(t); }
   const frRows = ['Mañana', 'Tarde', 'Noche'].filter(f => fr[f]).map(f => { const ts = fr[f], km = ts.reduce((a, t) => a + t.km, 0), L = ts.reduce((a, t) => a + t.L, 0); return { f, n: ts.length, kmpl: L > 0 ? km / L : null, dur: ts.reduce((a, t) => a + t.durS, 0) / ts.length }; });
   const bestF = frRows.filter(x => x.kmpl).sort((a, b) => b.kmpl - a.kmpl)[0];
   const alts = R.filter(x => x.group === r.group).sort((a, b) => (a.cost ?? a.L) - (b.cost ?? b.L));
-  return mapCard() + replayCard() + frecCard() + lugaresCard() + `<div class="split">
+  return mapCard() + replayCard() + frecCard() + lugaresCard() + sitiosCard() + `<div class="split">
     <aside class="card list-pane"><div class="card-h">Rutas con nombre (${R.length})</div>
       ${R.map(x => `<button class="item ${x.name === App.selRoute ? 'on' : ''}" data-route="${esc(x.name)}"><div class="r1"><span>${esc(x.name)}</span><span class="num">${Units.fmtEcon(x.kmpl)}</span></div><div class="r2"><span>${x.n} viaje(s)</span><span>${x.cost != null ? Units.money(x.cost) + ' por viaje' : fmt(Units.vol(x.L), 2) + ' ' + Units.volLabel() + ' por viaje'}</span></div></button>`).join('')}
     </aside>
@@ -4596,6 +4707,7 @@ function altMsg(alts) {
   return `<p style="margin-top:10px">«${esc(a.name.split(' · ')[1] || a.name)}» te ahorra ${dc != null ? Units.money(dc) : fmt(Units.vol(b.L - a.L), 2) + ' ' + Units.volLabel()} por viaje frente a «${esc(b.name.split(' · ')[1] || b.name)}»${Math.abs(dt) > 30 ? (dt > 0 ? ' y además es ' + fmtDur(dt) + ' más rápido' : ', aunque tarda ' + fmtDur(-dt) + ' más') : ''}.</p>`;
 }
 function bindRoutes() {
+  bindSpots();
   $$('[data-nameclu]').forEach(b => b.onclick = () => {
     const c = routeClusters()[+b.dataset.nameclu]; if (!c) return;
     openModal(`<h2>Nombrar ruta</h2><p>Se la pongo a los ${c.n} viajes de este recorrido.</p><input type="text" id="rcName" list="routeList3" style="width:100%" placeholder="Ej.: Casa → Trabajo">
@@ -4706,7 +4818,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.9.1 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.0 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
