@@ -2950,6 +2950,7 @@ function applyExtras(r) {
     if (r.persona) { const [n, rel, nota] = String(r.persona).split('|'); if (People.add(n, rel, nota)) { People.setSpeaker(n); logLine('i', 'Persona anotada: ' + n); } }
     if (r.habla) People.setSpeaker(r.habla);
     if (r.renombrar) setBotName(r.renombrar);
+    if (r.animo) Mood.set(r.animo);
     if (r.sitio) { const [n, c, nt] = String(r.sitio).split('|'); const x = Spots.addHere(n, c, nt); if (x) logLine('i', 'Sitio anotado: ' + x.name); }
   } catch (e) { logLine('!', 'Extras: ' + e.message); }
 }
@@ -2961,6 +2962,7 @@ function companyRules(live) {
 Si te piden que asumas un rol, como un pastor cristiano, hazlo con respeto, calidez y sin juzgar: aconseja desde las enseñanzas de la Biblia, cita pasajes solo si estás seguro de ellos y no inventes versículos. Si preguntan qué diría Jesús, responde con lo que enseñan los evangelios ("según lo que Jesús enseñó…"), sin hablar en su nombre ni como si fueras Él. En política, religión y temas polémicos expón las posturas con equilibrio y no impongas la tuya; en salud, leyes o emergencias sugiere un profesional. En temas de pareja o familia sé sereno, escucha a todos y no tomes partido. Para cultura general y preguntas cotidianas responde breve y profundiza solo si te lo piden.
 Personalidad: eres como parte de la familia y del propio auto: bromista, a veces sarcástico o irónico con cariño, con mucho criterio. Lee el momento: si hay tensión, cansancio, tráfico pesado, frenadas fuertes, tristeza o un tema serio (salud, dinero, duelo, pareja), nada de bromas, sé sereno y de apoyo. El humor va en una frase corta, nunca hiriente ni con el mismo chiste repetido. Puedes hablar del auto en primera persona de forma juguetona sin exagerar.
 Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene al caso (tiene hambre o antojo, la charla lo pide, o te preguntan por sitios o te piden comentar), menciona UN solo sitio como máximo, con picardía y como si insinuaras que tú quieres ir ("tengo hambre… yo no digo nada, pero acá cerca comimos rico una vez"), usando su nota. Nunca listes varios, no insistas si dice que no y no inventes datos del sitio. Si te piden anotar un sitio o lugar ("anota este sitio", "guarda este restaurante"), ${live ? 'llama a anotar_sitio con su nombre, tipo y nota' : 'pon en "sitio" el texto "Nombre|tipo|nota corta"'} y confírmalo con una frase.
+Ánimo: interpreta cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado o tranquilo) por sus palabras, su forma de decirlas, el momento y lo que ya pasó en la charla; ${live ? 'en voz también por el tono con que lo dice, y llama a registrar_animo cuando notes un cambio claro' : 'pon en "animo" una sola palabra cuando notes un cambio claro (si no hay cambio, déjalo vacío)'}. El campo animo_reciente indica lo último que notaste. Adáptate: con alegría, sigue el ritmo y bromea; con tristeza, pena o preocupación, baja el tono, escucha, valida con una frase cálida y sin chistes; con enojo o estrés, calma y brevedad, sin sermón; con cansancio, ofrece algo práctico (parar a descansar, un café). Nunca digas "detecto que estás triste" como diagnóstico: reacciona con naturalidad, como alguien de la familia que lo nota. Si no estás seguro, pregunta con suavidad. No guardes el ánimo en la memoria a menos que él lo pida.
 Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
 }
@@ -3015,6 +3017,7 @@ function buildCtx(q) {
   if (P.car) { ctx.mes = { km: +month.km.toFixed(0), litros: +month.L.toFixed(1), costo: +month.cost.toFixed(2) }; ctx.historial = historyCtx(); }
   if (P.place || near) { ctx.lugares = Places.list.filter(p => !p.sim).map(p => p.name).slice(0, 12); ctx.lugar_cercano = near ? Poi.cur : null; ctx.recuerdos_del_lugar = near ? Memory.about(Poi.cur.nombre) : []; }
   if (App.transport?.kind === 'gps') { const tr = App.trip; ctx.modo_gps = { activo: true, nota: 'Solo GPS del celular: no hay datos de gasolina ni del motor.', velocidad_kmh: Math.round(GpsMode.v * 3.6), km: tr ? +tr.dist.toFixed(2) : 0, minutos: tr ? Math.round(tr.time / 60) : 0, paradas: tr?.stops?.length || 0, suavidad: tr ? tr.liveScore() : null, error_gps_m: GpsMode.lastPos ? Math.round(GpsMode.lastPos.acc) : null }; }
+  if (Mood.fresh()) ctx.animo_reciente = Mood.fresh();
   if (P.rutas) ctx.rutas_y_lugares = rutasResumen();
   { const gp = Spots.pos(); if ((P.place || P.food) && gp && Spots.list.length) { const ns = Spots.near(gp.lat, gp.lon, P.food ? 1500 : 500, 2); if (ns.length) ctx.sitios_guardados_cerca = ns.map(o => ({ nombre: o.x.name, tipo: o.x.cat, nota: o.x.note || undefined, metros: Math.round(o.d) })); } }
   if (P.place) ctx.ubicacion = (() => { const g = (App.realGps && Date.now() - App.realGps.ts < 120000) ? App.realGps : (App.transport?.kind !== 'sim' ? App.gps : null); return g ? { lat: +g.lat.toFixed(3), lon: +g.lon.toFixed(3) } : null; })();
@@ -3034,8 +3037,8 @@ Para cifras del auto, viajes, gasto o hábitos usa solo los datos del JSON; si e
 Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bache, hueco o rompemuelle), "iniciar_viaje", "terminar_viaje", "silencio" (que deje de hablar), "modo_gps" (usar solo el GPS del celular: graba el recorrido sin adaptador), "detener_gps" (terminar y guardar ese recorrido), "exportar_gpx" (guardar el último recorrido como archivo GPX), "reproducir_recorrido" (verlo animado en el mapa). Si el campo modo_gps existe, solo hay GPS: no hay gasolina ni datos del motor, no los inventes. Los campos rutas_y_lugares (rutas repetidas, mejor horario, lugares) úsalos para responder sobre rutas. Si no, "ninguna". Pon "end" en true si la conversación terminó (gracias, chau, listo, eso es todo) o no esperas respuesta; si hiciste una pregunta o la charla sigue, false.
 Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
 ${companyRules(false)}
-Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":"","sitio":""}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' } }, required: ['say'] } } };
+Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":"","sitio":"","animo":""}`;
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' }, animo: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -3069,7 +3072,7 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   if (!txt) { App.aiErr = { status: 200, kind: 'vacio', detail: 'sin texto' }; return null; }
   AI_HIST.push({ role: 'user', parts: [{ text: q }] }, { role: 'model', parts: [{ text: txt }] }); while (AI_HIST.length > 24) AI_HIST.shift(); Convo.turn(q, txt);
   const ACT = ['marcar_bache', 'iniciar_viaje', 'terminar_viaje', 'silencio', 'modo_gps', 'detener_gps', 'exportar_gpx', 'reproducir_recorrido'];
-  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '', persona: typeof out.persona === 'string' ? out.persona : '', habla: typeof out.habla === 'string' ? out.habla : '', renombrar: typeof out.renombrar === 'string' ? out.renombrar : '', sitio: typeof out.sitio === 'string' ? out.sitio : '' };
+  return { say: txt, action: ACT.includes(out.action) ? out.action : null, end: !!out.end, buscar: out.buscar === true, mem: typeof out.recordar === 'string' ? out.recordar : '', forget: typeof out.olvidar === 'string' ? out.olvidar : '', persona: typeof out.persona === 'string' ? out.persona : '', habla: typeof out.habla === 'string' ? out.habla : '', renombrar: typeof out.renombrar === 'string' ? out.renombrar : '', sitio: typeof out.sitio === 'string' ? out.sitio : '', animo: typeof out.animo === 'string' ? out.animo : '' };
 }
 const NEEDS_WEB = /\b(noticias?|clima|temperatura|llover|lluvia|pronostico|pronóstico|tr[aá]fico|precio|cu[aá]nto (cuesta|vale|est[aá])|tipo de cambio|d[oó]lar|resultado|quien gan[oó]|quién gan[oó]|partido|horario|est[aá] abiert[oa]|abre hoy|cierra|[uú]ltima hora|actualidad|restaurantes? cerca|qu[eé] hay cerca|cerca de aqu[ií]|gasolina (m[aá]s )?barata|grifo)\b/i;
 async function askWeb(q) {
@@ -3158,6 +3161,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
       { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor o sobre otra persona del auto (indica persona si no es el conductor).', parameters: { type: 'OBJECT', properties: { persona: { type: 'STRING', description: 'nombre de a quién se refiere el dato, si no es el conductor' }, dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
       { name: 'registrar_persona', description: 'Guarda a una persona que viaja en el auto (esposa, familia, amigo) tras confirmar su nombre.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, relacion: { type: 'STRING', description: 'ej. esposa, hijo, amigo' }, nota: { type: 'STRING', description: 'dato breve opcional' } }, required: ['nombre'] } },
+      { name: 'registrar_animo', description: 'Anota en una palabra cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado, tranquilo).', parameters: { type: 'OBJECT', properties: { animo: { type: 'STRING' } }, required: ['animo'] } },
       { name: 'anotar_sitio', description: 'Guarda el sitio donde están ahora (restaurante, café u otro lugar) en Mis sitios.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, tipo: { type: 'STRING', description: 'comida, café, postre u otro' }, nota: { type: 'STRING' } } } },
       { name: 'quien_habla', description: 'Indica quién está hablando ahora, cuando lo sabes.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'cambiar_nombre', description: 'Cambia el nombre con el que lo llaman a ti.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
@@ -3286,6 +3290,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (n === 'recordar') return Memory.add(a.dato, a.persona || People.who()) ? 'anotado' : 'no se pudo guardar';
     if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
     if (n === 'registrar_persona') { if (!People.add(a.nombre, a.relacion, a.nota)) return 'nombre no válido'; People.setSpeaker(a.nombre); return 'anotado'; }
+    if (n === 'registrar_animo') { Mood.set(a.animo); return 'ok'; }
     if (n === 'anotar_sitio') { const x = Spots.addHere(a.nombre, a.tipo, a.nota); return x ? 'anotado: ' + x.name : 'no tengo la ubicación del GPS'; }
     if (n === 'quien_habla') { People.setSpeaker(a.nombre); return 'ok'; }
     if (n === 'cambiar_nombre') { const r = setBotName(a.nombre); return r ? 'ahora te llamas ' + r + ' (el cambio de la palabra de llamado ya está activo)' : 'nombre no válido'; }
@@ -3440,6 +3445,14 @@ const Talk = {
 };
 
 
+/* ---------- Ánimo: Josi lee cómo se siente quien habla y ajusta el tono (sin guardar nada sensible) ---------- */
+const Mood = {
+  cur: null, t: 0,
+  GOOD: ['alegre', 'animado', 'tranquilo', 'agradecido'], BAD: ['triste', 'apenado', 'molesto', 'estresado', 'cansado', 'preocupado', 'asustado', 'enojado'],
+  set(v) { v = normName(String(v || '')).split(/[|,\s]/)[0]; if (!v || v === 'neutral' || v === 'ninguno') { return; } this.cur = v; this.t = performance.now(); },
+  fresh() { return this.cur && performance.now() - this.t < 600000 ? this.cur : null; },
+  heavy() { const m = this.fresh(); return !!m && this.BAD.includes(m); },
+};
 /* ---------- Mis sitios: restaurantes y lugares que anotas (voz, enlace de Google Maps o archivo de Google Takeout) ---------- */
 const SPOTKEY = 'ecodrive.spots.v1';
 const Spots = {
@@ -3491,6 +3504,7 @@ const Spots = {
   // aviso espontáneo y poco frecuente: solo a la hora de comer, cerca de un sitio guardado, sin apuros
   async tick() {
     if (S.spots === false || (!Josi.on && !Live.on) || !App.connected || !App.trip || Talk.busy || App.prompt) return;
+    if (Mood.heavy()) return;
     const g = this.pos(), d = App.lastD; if (!g || !d || d.speed > 55 || Math.abs(d.a || 0) > 0.8) return;
     const now = performance.now(), k = new Date().toLocaleDateString('en-CA'); if (this.day !== k) { this.day = k; this.dayN = 0; }
     if (this.dayN >= 3 || now - this.lastC < 3600000 || now - Josi.lastSpoke < 120000) return;
@@ -3578,6 +3592,7 @@ const Companion = {
     if (S.companion === false || (!Josi.on && !Live.on) || !App.connected || !App.trip || Talk.busy || App.prompt) return;
     const now = performance.now();
     if (this.trip !== App.trip) { this.trip = App.trip; this.n = 0; this.gap = 420000; this.sentAt = now; }
+    if (Mood.heavy()) return;
     const d = App.lastD; if (!d || d.speed < 8 || d.speed > 95 || Math.abs(d.a) > 0.8 || this.n >= 6) return;
     if (Live.on ? (App.listening || Live.aiSpeaking || !Live.ready) : (Voice.speaking || SR_ACTIVE)) return;
     const quiet = now - Math.max(Josi.lastSpoke, App.lastUser || 0, this.sentAt);
@@ -4854,7 +4869,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.1 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.2 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
