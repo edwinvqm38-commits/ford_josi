@@ -2963,6 +2963,7 @@ Si te piden que asumas un rol, como un pastor cristiano, hazlo con respeto, cali
 Personalidad: eres como parte de la familia y del propio auto: bromista, a veces sarcástico o irónico con cariño, con mucho criterio. Lee el momento: si hay tensión, cansancio, tráfico pesado, frenadas fuertes, tristeza o un tema serio (salud, dinero, duelo, pareja), nada de bromas, sé sereno y de apoyo. El humor va en una frase corta, nunca hiriente ni con el mismo chiste repetido. Puedes hablar del auto en primera persona de forma juguetona sin exagerar.
 Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene al caso (tiene hambre o antojo, la charla lo pide, o te preguntan por sitios o te piden comentar), menciona UN solo sitio como máximo, con picardía y como si insinuaras que tú quieres ir ("tengo hambre… yo no digo nada, pero acá cerca comimos rico una vez"), usando su nota. Nunca listes varios, no insistas si dice que no y no inventes datos del sitio. Si te piden anotar un sitio o lugar ("anota este sitio", "guarda este restaurante"), ${live ? 'llama a anotar_sitio con su nombre, tipo y nota' : 'pon en "sitio" el texto "Nombre|tipo|nota corta"'} y confírmalo con una frase.
 Ánimo: interpreta cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado o tranquilo) por sus palabras, su forma de decirlas, el momento y lo que ya pasó en la charla; ${live ? 'en voz también por el tono con que lo dice, y llama a registrar_animo cuando notes un cambio claro' : 'pon en "animo" una sola palabra cuando notes un cambio claro (si no hay cambio, déjalo vacío)'}. El campo animo_reciente indica lo último que notaste. Adáptate: con alegría, sigue el ritmo y bromea; con tristeza, pena o preocupación, baja el tono, escucha, valida con una frase cálida y sin chistes; con enojo o estrés, calma y brevedad, sin sermón; con cansancio, ofrece algo práctico (parar a descansar, un café). Nunca digas "detecto que estás triste" como diagnóstico: reacciona con naturalidad, como alguien de la familia que lo nota. Si no estás seguro, pregunta con suavidad. No guardes el ánimo en la memoria a menos que él lo pida.
+${live ? 'Reconocimiento de voz: la app reconoce por el timbre a las personas cuyas voces están registradas y te avisa quién habla. Si te avisan de una voz que no conoces, pregunta con naturalidad quién es o pide que te la presenten (por ejemplo "¿y quién nos acompaña?"), y cuando te diga el nombre llama a aprender_voz. Si ves una voz nueva y es obvio que es alguien que ya conoces, no preguntes de más.' : ''}
 Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
 }
@@ -3161,6 +3162,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
       { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor o sobre otra persona del auto (indica persona si no es el conductor).', parameters: { type: 'OBJECT', properties: { persona: { type: 'STRING', description: 'nombre de a quién se refiere el dato, si no es el conductor' }, dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
       { name: 'registrar_persona', description: 'Guarda a una persona que viaja en el auto (esposa, familia, amigo) tras confirmar su nombre.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, relacion: { type: 'STRING', description: 'ej. esposa, hijo, amigo' }, nota: { type: 'STRING', description: 'dato breve opcional' } }, required: ['nombre'] } },
+      { name: 'aprender_voz', description: 'Aprende la voz desconocida que acaba de hablar, asociándola al nombre que te dieron. Úsala tras preguntar quién es.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'registrar_animo', description: 'Anota en una palabra cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado, tranquilo).', parameters: { type: 'OBJECT', properties: { animo: { type: 'STRING' } }, required: ['animo'] } },
       { name: 'anotar_sitio', description: 'Guarda el sitio donde están ahora (restaurante, café u otro lugar) en Mis sitios.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, tipo: { type: 'STRING', description: 'comida, café, postre u otro' }, nota: { type: 'STRING' } } } },
       { name: 'quien_habla', description: 'Indica quién está hablando ahora, cuando lo sabes.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
@@ -3290,9 +3292,10 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (n === 'recordar') return Memory.add(a.dato, a.persona || People.who()) ? 'anotado' : 'no se pudo guardar';
     if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
     if (n === 'registrar_persona') { if (!People.add(a.nombre, a.relacion, a.nota)) return 'nombre no válido'; People.setSpeaker(a.nombre); return 'anotado'; }
+    if (n === 'aprender_voz') return VoiceID.bindUnknown(a.nombre) ? 'voz aprendida' : 'no tengo suficiente audio reciente de esa voz';
     if (n === 'registrar_animo') { Mood.set(a.animo); return 'ok'; }
     if (n === 'anotar_sitio') { const x = Spots.addHere(a.nombre, a.tipo, a.nota); return x ? 'anotado: ' + x.name : 'no tengo la ubicación del GPS'; }
-    if (n === 'quien_habla') { People.setSpeaker(a.nombre); return 'ok'; }
+    if (n === 'quien_habla') { People.setSpeaker(a.nombre); if (VoiceID.lastUnknown.length && !VoiceID.list.some(p => normName(p.name) === normName(a.nombre))) VoiceID.bindUnknown(a.nombre); return 'ok'; }
     if (n === 'cambiar_nombre') { const r = setBotName(a.nombre); return r ? 'ahora te llamas ' + r + ' (el cambio de la palabra de llamado ya está activo)' : 'nombre no válido'; }
     return 'herramienta desconocida';
   },
@@ -3319,6 +3322,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   },
   feed(c) {
     if (!this.on) return;
+    if (!this.aiSpeaking && VoiceID.has()) VoiceID.push(c, this.rate);
     let e = 0, k = 0; for (let i = 0; i < c.length; i += 8) { e += c[i] * c[i]; k++; } this.micLevel = Math.min(1, Math.sqrt(e / Math.max(1, k)) * 7);
     const p = new Float32Array(this.pend.length + c.length); p.set(this.pend); p.set(c, this.pend.length); this.pend = p;
     const ratio = this.rate / 16000, N = 640, step = Math.round(N * ratio);
@@ -3444,6 +3448,149 @@ const Talk = {
   },
 };
 
+
+
+/* ---------- Huella de voz (experimental, 100 % en el dispositivo): reconoce quién habla en la voz en vivo ----------
+   Calcula rasgos MFCC + tono de la voz, sin enviar audio a ningún lado. Las huellas viven solo en este navegador. */
+const VKEY = 'ecodrive.voices.v1';
+const VoiceID = {
+  list: store.get(VKEY, []), buf: [], bufN: 0, lastUnknown: [], lastUT: 0, unk: 0, askedT: 0, lastN: 0, busyRec: false, lastRes: null,
+  save() { store.set(VKEY, this.list); },
+  has() { return S.voiceId !== false && this.list.length > 0; },
+  _fb: null,
+  _init() {
+    if (this._fb) return; const N = 512, SR = 16000, M = 24, mel = f => 2595 * Math.log10(1 + f / 700), imel = m => 700 * (Math.pow(10, m / 2595) - 1);
+    const lo = mel(80), hi = mel(5500), pts = Array.from({ length: M + 2 }, (_, i) => imel(lo + (hi - lo) * i / (M + 1))), bins = pts.map(f => Math.floor((N + 1) * f / SR));
+    const fb = []; for (let m = 1; m <= M; m++) { const w = new Float32Array(N / 2 + 1); for (let k = bins[m - 1]; k < bins[m]; k++) w[k] = (k - bins[m - 1]) / Math.max(1, bins[m] - bins[m - 1]); for (let k = bins[m]; k < bins[m + 1]; k++) w[k] = (bins[m + 1] - k) / Math.max(1, bins[m + 1] - bins[m]); fb.push(w); }
+    const dct = []; for (let c = 1; c <= 13; c++) { const r = new Float32Array(M); for (let m = 0; m < M; m++) r[m] = Math.cos(Math.PI * c * (m + 0.5) / M); dct.push(r); }
+    const win = new Float32Array(400); for (let i = 0; i < 400; i++) win[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / 399);
+    const cos = new Float32Array(N / 2), sin = new Float32Array(N / 2); for (let i = 0; i < N / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / N); sin[i] = -Math.sin(2 * Math.PI * i / N); }
+    const rev = new Uint16Array(N); for (let i = 0; i < N; i++) { let r = 0, x = i; for (let b = 0; b < 9; b++) { r = (r << 1) | (x & 1); x >>= 1; } rev[i] = r; }
+    this._fb = { N, M, fb, dct, win, cos, sin, rev };
+  },
+  _fft(re, im) {
+    const { N, cos, sin, rev } = this._fb;
+    for (let i = 0; i < N; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= N; size <<= 1) { const half = size >> 1, step = N / size; for (let i = 0; i < N; i += size) for (let j = 0, k = 0; j < half; j++, k += step) { const a = i + j, b = a + half, tr = re[b] * cos[k] - im[b] * sin[k], ti = re[b] * sin[k] + im[b] * cos[k]; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; } }
+  },
+  // pcm: Float32Array a 16 kHz → vector de rasgos o null si no hay suficiente voz
+  feat(pcm) {
+    this._init(); const { N, M, fb, dct, win } = this._fb, H = 160, F = 400, n = Math.floor((pcm.length - F) / H); if (n < 20) return null;
+    const rms = new Float32Array(n); for (let f = 0; f < n; f++) { let e = 0; for (let i = 0; i < F; i += 2) { const v = pcm[f * H + i]; e += v * v; } rms[f] = Math.sqrt(e / (F / 2)); }
+    const sorted = [...rms].sort((a, b) => a - b), p90 = sorted[Math.floor(n * 0.9)], thr = Math.max(0.01, p90 * 0.3);
+    const ceps = [], f0s = [], re = new Float32Array(N), im = new Float32Array(N), lg = new Float32Array(M);
+    for (let f = 0; f < n; f++) {
+      if (rms[f] < thr) continue; re.fill(0); im.fill(0); const o = f * H, pre = 0.97;
+      for (let i = 0; i < F; i++) re[i] = (pcm[o + i] - (i ? pre * pcm[o + i - 1] : 0)) * win[i];
+      this._fft(re, im); const pw = new Float32Array(N / 2 + 1); for (let k = 0; k <= N / 2; k++) pw[k] = re[k] * re[k] + im[k] * im[k];
+      for (let m = 0; m < M; m++) { let sum = 0; const w = fb[m]; for (let k = 0; k <= N / 2; k++) if (w[k]) sum += w[k] * pw[k]; lg[m] = Math.log(sum + 1e-9); }
+      const c = new Float32Array(13); for (let k = 0; k < 13; k++) { let v = 0; const d = dct[k]; for (let m = 0; m < M; m++) v += d[m] * lg[m]; c[k] = v; } ceps.push(c);
+      if (f % 3 === 0 && o + 640 <= pcm.length) { // tono por autocorrelación
+        let r0 = 0; for (let i = 0; i < 640; i++) r0 += pcm[o + i] * pcm[o + i]; let best = 0, bl = 0;
+        for (let lag = 40; lag <= 228; lag++) { let r = 0; for (let i = 0; i + lag < 640; i += 2) r += pcm[o + i] * pcm[o + i + lag]; r = r * 2 / (r0 + 1e-9); if (r > best) { best = r; bl = lag; } }
+        if (best > 0.5 && bl) f0s.push(16000 / bl);
+      }
+    }
+    if (ceps.length < 25) return null;
+    const mean = new Array(13).fill(0), sd = new Array(13).fill(0); for (const c of ceps) for (let k = 0; k < 13; k++) mean[k] += c[k] / ceps.length;
+    for (const c of ceps) for (let k = 0; k < 13; k++) sd[k] += (c[k] - mean[k]) ** 2 / ceps.length; for (let k = 0; k < 13; k++) sd[k] = Math.sqrt(sd[k]);
+    f0s.sort((a, b) => a - b); const f0 = f0s.length >= 5 ? f0s[Math.floor(f0s.length / 2)] : 0;
+    return { m: mean.map(v => +v.toFixed(3)), s: sd.map(v => +v.toFixed(3)), f: f0 ? +Math.log2(f0 / 120).toFixed(3) : null, n: ceps.length };
+  },
+  dist(a, b) {
+    let dm = 0, ds = 0; for (let k = 0; k < 13; k++) { dm += (a.m[k] - b.m[k]) ** 2; ds += (a.s[k] - b.s[k]) ** 2; }
+    let d = Math.sqrt(dm / 13) + 0.5 * Math.sqrt(ds / 13); if (a.f != null && b.f != null) d += 1.5 * Math.abs(a.f - b.f);
+    return d;
+  },
+  // quién es: menor distancia a cualquier huella guardada; null si nadie se parece
+  identify(v) {
+    if (!v || !this.list.length) return null; let best = null, second = Infinity;
+    for (const p of this.list) { const d = Math.min(...p.vecs.map(x => this.dist(v, x))), thr = p.thr || 2.2; if (!best || d < best.d) { if (best) second = Math.min(second, best.d); best = { name: p.name, d, thr }; } else second = Math.min(second, d); }
+    const ok = best.d <= best.thr && (this.list.length === 1 || second - best.d > 0.25 * best.thr);
+    return { name: ok ? best.name : null, d: +best.d.toFixed(2), near: best.name, thr: +best.thr.toFixed(2), unknown: best.d > best.thr * 1.2, vec: v };
+  },
+  enroll(name, vecs) {
+    name = cleanName(name); if (!name || vecs.length < 2) return null;
+    let sp = 0, n = 0; for (let i = 0; i < vecs.length; i++) for (let j = i + 1; j < vecs.length; j++) { sp += this.dist(vecs[i], vecs[j]); n++; }
+    const thr = Math.max(1.5, Math.min(3.2, (sp / n) * 1.7)); const k = normName(name); this.list = this.list.filter(p => normName(p.name) !== k);
+    this.list.push({ name, vecs: vecs.slice(0, 8), thr: +thr.toFixed(2), ts: Date.now() }); this.save(); return thr;
+  },
+  del(name) { const k = normName(name); this.list = this.list.filter(p => normName(p.name) !== k); this.save(); },
+  // audio en vivo (desde Live.feed): junta segundos de voz y cada ~2.6 s intenta reconocer
+  push(c, rate) {
+    if (!this.has() || this.busyRec) return; let e = 0; for (let i = 0; i < c.length; i += 4) e += c[i] * c[i]; const rms = Math.sqrt(e / (c.length / 4));
+    if (rms < 0.012) return; const ratio = rate / 16000, out = new Float32Array(Math.floor(c.length / ratio));
+    for (let j = 0; j < out.length; j++) { const i0 = Math.floor(j * ratio), i1 = Math.min(c.length, Math.ceil((j + 1) * ratio)); let sum = 0; for (let i = i0; i < i1; i++) sum += c[i]; out[j] = sum / Math.max(1, i1 - i0); }
+    this.buf.push(out); this.bufN += out.length;
+    if (this.bufN >= 16000 * 2.6) { const all = new Float32Array(this.bufN); let o = 0; for (const b of this.buf) { all.set(b, o); o += b.length; } this.buf = []; this.bufN = 0; setTimeout(() => this.analyze(all), 0); }
+  },
+  analyze(pcm) {
+    try { const v = this.feat(pcm); if (!v) return; const r = this.identify(v); this.lastRes = r; if (r) this.handle(r); } catch (e) { logLine('!', 'Huella de voz: ' + e.message); }
+  },
+  handle(r) {
+    if (r.name) {
+      this.unk = 0; if (People.who() !== r.name) { People.setSpeaker(r.name); if (Date.now() - this.lastN > 45000 && Live.on && Live.ready) { this.lastN = Date.now(); Live.notice(`Por el timbre de la voz, ahora habla ${r.name}.`); } }
+    } else if (r.unknown) {
+      this.unk++; this.lastUnknown = this.lastUnknown.concat([r.vec]).slice(-4); this.lastUT = Date.now();
+      if (this.unk >= 2 && Date.now() - this.askedT > 600000 && Live.on && Live.ready) { this.askedT = Date.now(); Live.notice('Se oye una voz que no reconoces. Con naturalidad pregunta quién es, o pide que te la presenten. Cuando te diga su nombre, llama a aprender_voz con ese nombre.'); }
+    }
+  },
+  // liga las últimas voces desconocidas a un nombre (cuando te lo presentan)
+  bindUnknown(name) {
+    if (Date.now() - this.lastUT > 240000 || this.lastUnknown.length < 2) return false;
+    const v = this.lastUnknown.slice(); this.lastUnknown = []; this.unk = 0; const thr = this.enroll(name, v); if (thr) { People.add(name); People.setSpeaker(name); } return !!thr;
+  },
+  // graba ms de micrófono y devuelve PCM a 16 kHz (para registrar o probar una voz)
+  async record(ms, onTick) {
+    this.busyRec = true; let stream, ctx;
+    try {
+      if (Talk.stopWakeAsync) await Talk.stopWakeAsync();
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      ctx = new (window.AudioContext || window.webkitAudioContext)(); const src = ctx.createMediaStreamSource(stream), node = ctx.createScriptProcessor(4096, 1, 1), zero = ctx.createGain(); zero.gain.value = 0;
+      const chunks = []; node.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); src.connect(node); node.connect(zero); zero.connect(ctx.destination);
+      const t0 = performance.now(); await new Promise(res => { const iv = setInterval(() => { const t = performance.now() - t0; onTick && onTick(t / ms); if (t >= ms) { clearInterval(iv); res(); } }, 200); });
+      const n = chunks.reduce((a, c) => a + c.length, 0), raw = new Float32Array(n); let o = 0; for (const c of chunks) { raw.set(c, o); o += c.length; }
+      const ratio = ctx.sampleRate / 16000, out = new Float32Array(Math.floor(n / ratio));
+      for (let j = 0; j < out.length; j++) { const i0 = Math.floor(j * ratio), i1 = Math.min(n, Math.ceil((j + 1) * ratio)); let sum = 0; for (let i = i0; i < i1; i++) sum += raw[i]; out[j] = sum / Math.max(1, i1 - i0); }
+      return out;
+    } finally { try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {} try { ctx && ctx.close(); } catch (e) {} this.busyRec = false; setTimeout(() => Talk.resumeWake && Talk.resumeWake(), 600); }
+  },
+  windows(pcm, secs = 2.4) { const w = Math.floor(16000 * secs), out = []; for (let o = 0; o + w <= pcm.length; o += Math.floor(w * 0.75)) { const v = this.feat(pcm.subarray(o, o + w)); if (v) out.push(v); } return out; },
+};
+function voiceBox() {
+  const L = VoiceID.list;
+  return `<div id="vidBox">${L.length ? L.map(p => `<div class="pv"><span class="pv-n">${esc(p.name)}<small class="muted"> · ${p.vecs.length} muestras</small></span><button data-delvoice="${esc(p.name)}" aria-label="Borrar voz">✕</button></div>`).join('') : '<p class="muted" style="margin:0 0 8px">Aún no hay voces registradas.</p>'}
+    <div class="rp-row"><button class="btn small" id="vidAdd">${ico('mic')} Registrar voz</button>${L.length ? `<button class="btn small" id="vidTest">Probar</button>` : ''}</div></div>`;
+}
+function bindVoiceBox() {
+  $$('[data-delvoice]').forEach(b => b.onclick = async () => { if (await confirmBox('Borrar voz', 'Josi olvidará la huella de esta voz.', 'Borrar', true)) { VoiceID.del(b.dataset.delvoice); renderView(); } });
+  const add = $('#vidAdd'); if (add) add.onclick = () => {
+    openModal(`<h2>Registrar voz</h2><p class="muted">Se graba solo en este celular. Cada persona se registra una vez, en un lugar tranquilo.</p>
+      <input type="text" id="vidN" list="vidP" style="width:100%" placeholder="Nombre (ej.: Natalia)"><datalist id="vidP">${People.list.map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
+      <p id="vidTxt" style="margin:10px 0 4px">Cuando toques «Empezar», lee con voz normal: <i>«Hola Josi, vamos tranquilos por el camino. Hoy quiero llegar sin prisa y escuchar algo bueno en la radio.»</i> (unos 9 segundos)</p><div id="vidBar" style="height:6px;border-radius:4px;background:var(--s3);overflow:hidden"><i style="display:block;height:100%;width:0;background:var(--accent)"></i></div>
+      <div class="actions"><button class="btn" id="vidNo">Cancelar</button><button class="btn primary" id="vidGo">Empezar</button></div>`);
+    $('#vidNo').onclick = closeModal;
+    $('#vidGo').onclick = async () => {
+      const nm = $('#vidN').value.trim(); if (!nm) { toast('Escribe el nombre de la persona.'); return; }
+      $('#vidGo').disabled = true; $('#vidTxt').textContent = 'Te escucho… habla ahora.';
+      try {
+        const pcm = await VoiceID.record(9500, f => { const i = $('#vidBar i'); if (i) i.style.width = Math.min(100, f * 100) + '%'; }), vs = VoiceID.windows(pcm);
+        if (vs.length < 2) { $('#vidTxt').textContent = 'Casi no te escuché. Habla un poco más fuerte y sin pausas largas, y vuelve a intentarlo.'; $('#vidGo').disabled = false; return; }
+        const thr = VoiceID.enroll(nm, vs); People.add(nm); closeModal(); toast(`Voz de ${cleanName(nm)} registrada (${vs.length} muestras)`); renderView();
+      } catch (e) { $('#vidTxt').textContent = e && e.name === 'NotAllowedError' ? 'No hay permiso de micrófono. Permítelo en Chrome (candado).' : 'No pude grabar: ' + (e.message || e); $('#vidGo').disabled = false; }
+    };
+  };
+  const t = $('#vidTest'); if (t) t.onclick = () => {
+    openModal(`<h2>Probar reconocimiento</h2><p id="vidTxt" class="muted">Di una frase cualquiera durante unos 4 segundos.</p><div class="actions"><button class="btn" id="vidNo">Cerrar</button><button class="btn primary" id="vidGo">Escuchar</button></div>`);
+    $('#vidNo').onclick = closeModal;
+    $('#vidGo').onclick = async () => {
+      $('#vidGo').disabled = true; $('#vidTxt').textContent = 'Te escucho…';
+      try { const pcm = await VoiceID.record(4500), v = VoiceID.feat(pcm); if (!v) { $('#vidTxt').textContent = 'No oí suficiente voz. Intenta de nuevo.'; } else { const r = VoiceID.identify(v); $('#vidTxt').innerHTML = r.name ? `Creo que eres <b>${esc(r.name)}</b> (distancia ${r.d}, límite ${r.thr}).` : `No me parece ninguna voz registrada. Lo más cercano es ${esc(r.near)} (distancia ${r.d}, límite ${r.thr}).`; } }
+      catch (e) { $('#vidTxt').textContent = 'No pude grabar: ' + (e.message || e); }
+      $('#vidGo').disabled = false;
+    };
+  };
+}
 
 /* ---------- Ánimo: Josi lee cómo se siente quien habla y ajusta el tono (sin guardar nada sensible) ---------- */
 const Mood = {
@@ -4869,7 +5016,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.2 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.3 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -4879,6 +5026,8 @@ function viewSettings() {
     <p class="muted" style="margin-top:0">Habla poco: un consejo como máximo cada 2 minutos, nunca en plena maniobra. Te felicita al cumplir la meta y resume cada viaje.</p>
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
     <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
+    <div class="f" style="display:block">${voiceBox()}</div>
     <div class="f"><span>Usar mi GPS real en simulación <span class="d">Para probar el mapa y la ruta con tu ubicación verdadera</span></span><input type="checkbox" id="sGpsReal" ${S.gpsReal !== false ? 'checked' : ''}></div>
     <div class="f"><span>Buscar en internet <span class="d">Josi busca noticias, clima, tráfico, precios y datos de lugares cuando se lo preguntas (usa la búsqueda de Google dentro del plan gratuito, con tope diario)</span></span><input type="checkbox" id="sSearch" ${S.search !== false ? 'checked' : ''}></div>
     <div class="f"><span>Conversación continua <span class="d">Después de responder, Josi te sigue escuchando unos segundos sin que repitas «Josi»</span></span><input type="checkbox" id="sChat" ${S.chat !== false ? 'checked' : ''}></div>
@@ -5002,6 +5151,8 @@ function bindSettings() {
   };
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
+  $('#sVoiceId').onchange = e => { S.voiceId = e.target.checked; saveSettings(); };
+  bindVoiceBox();
   $('#sGpsReal').onchange = e => { S.gpsReal = e.target.checked; saveSettings(); if (App.transport?.kind === 'sim') { if (S.gpsReal) startGps(); else stopGps(); } };
   $('#sLive').onchange = e => { S.live = e.target.checked; saveSettings(); if (!S.live && Live.on) Live.stop('manual'); };
   $('#sLiveVoice').onchange = e => { S.liveVoice = e.target.value; saveSettings(); };
