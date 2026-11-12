@@ -2320,7 +2320,7 @@ const Josi = {
   },
   // Solo GPS: Josi comenta frenadas y arrancadas bruscas (después, en un momento tranquilo), exceso de velocidad y felicita el manejo suave
   onGps(d, evt) {
-    if (!this.on || !d) return; const now = performance.now(), G = this._g = this._g || { evtT: 0, lastEvt: now, spd: 0 };
+    if (!this.on || !d || S.gpsCoach === false) return; const now = performance.now(), G = this._g = this._g || { evtT: 0, lastEvt: now, spd: 0 };
     if (evt) {
       G.evtT = now; G.lastEvt = now; const heavy = Mood.heavy();
       if (evt === 'hardBrake') this.ask('tip', 'brake', pick(heavy ? ['Esa frenada fue fuerte. Si ves venir el semáforo, ve soltando antes.'] : ['Esa frenada fue fuerte. Si ves venir el semáforo, ve soltando antes y llegamos igual de bien.', 'Uy, frenazo. Anticipando un poco el viaje se siente más suave para todos.', 'Frenada fuerte. Mi estómago y yo preferimos las suaves.']));
@@ -5225,7 +5225,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.11 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.12 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5238,6 +5238,7 @@ function viewSettings() {
     <div class="f"><span>Escucha de conversaciones <span class="d">Cuánto espera Josi antes de darte por terminado. Normal: frases cortas. Larga: hasta 30 s. Mesa: hasta 60 s con varias personas; recuerda lo último que se habló para responder con contexto cuando lo llamas (solo en memoria)</span></span><select id="sListen"><option value="normal" ${listenMode() === 'normal' ? 'selected' : ''}>Normal</option><option value="larga" ${listenMode() === 'larga' ? 'selected' : ''}>Larga (30 s)</option><option value="mesa" ${listenMode() === 'mesa' ? 'selected' : ''}>Mesa (60 s)</option></select></div>
     <div class="f"><span>Sensibilidad del micrófono <span class="d">Para voces bajas en voz en vivo. El reconocimiento normal usa el micrófono del celular tal cual: acerca el teléfono o habla cerca si hablas bajito</span></span><select id="sGain"><option value="1" ${(+S.micGain || 1) === 1 ? 'selected' : ''}>Normal</option><option value="2" ${+S.micGain === 2 ? 'selected' : ''}>Alta</option><option value="3.5" ${+S.micGain === 3.5 ? 'selected' : ''}>Muy alta</option></select></div>
     <div class="f"><span>Modelo inteligente automático <span class="d">Usa un modelo más capaz para opiniones, consejos y charlas largas, y el rápido para órdenes simples. Gasta más de tu cuota gratuita en las charlas profundas</span></span><input type="checkbox" id="sSmart" ${S.aiSmart !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Avisos de manejo en modo Solo GPS <span class="d">Josi comenta frenadas y arrancadas fuertes, velocidad y manejo suave. Apágalo si el GPS del celular no te parece preciso; el recorrido se sigue grabando</span></span><input type="checkbox" id="sGpsCoach" ${S.gpsCoach !== false ? 'checked' : ''}></div>
     <div class="f"><span>Avisar cuando hablan a la vez <span class="d">Si varias personas hablan juntas, Josi lo nota, no toma ese texto como contexto y pide hablar de uno en uno (como mucho cada 15 minutos)</span></span><input type="checkbox" id="sOverlap" ${S.overlap !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
@@ -5367,6 +5368,7 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
+  $('#sGpsCoach').onchange = e => { S.gpsCoach = e.target.checked; saveSettings(); if (!e.target.checked) Josi.queue = null; };
   $('#sOverlap').onchange = e => { S.overlap = e.target.checked; saveSettings(); };
   $('#sSmart').onchange = e => { S.aiSmart = e.target.checked; saveSettings(); };
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
