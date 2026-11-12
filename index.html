@@ -3687,7 +3687,7 @@ const GpsMode = {
     if (kmh < 1.5) { this.stopS++; if (tr instanceof GpsTrip && fresh) { if (this.stopS === 15) tr.stops.push({ lat: g.lat, lon: g.lon, t: Math.round(tr.time), dur: 15 }); else if (this.stopS > 15 && tr.stops.length) tr.stops[tr.stops.length - 1].dur = this.stopS; } } else this.stopS = 0;
     if (tr instanceof GpsTrip) tr.addGps(1, kmh, this.pend, evt, fresh && !this.weak ? g : null);
     this.pend = 0;
-    App.lastD = { speed: kmh, t: Date.now() }; App.vals.speed = kmh;
+    App.lastD = { speed: kmh, a: this.a || 0, t: Date.now() }; App.vals.speed = kmh;
     if (++this.n % 2 === 0) this.mapUpdate();
     App.dirty = true;
   },
@@ -3715,6 +3715,14 @@ async function connectGps() {
   logLine('i', 'Modo Solo GPS: se graba el recorrido con el GPS del celular');
   setConn('gps', 'Solo GPS'); startGps(); requestWake(); GpsMode.begin(); Josi.reset();
   startTrip(false); renderView();
+  // Josi también acompaña en modo Solo GPS: saluda y se queda escuchando «Josi»
+  App.convPending = false;
+  setTimeout(() => {
+    if (App.transport?.kind !== 'gps' || !Josi.on) return;
+    Josi.lastSpoke = performance.now() - Josi.gapMs + 30000;
+    Josi.speak(pick([`Hola, ${S.userName || 'Edwin'}, aquí ${botName()}.`, `${greetWord()}, ${S.userName || 'Edwin'}.`]) + ' Vamos en modo solo GPS: grabo tu recorrido, las paradas y qué tan suave manejas. Dime «' + botName() + '» si quieres algo.', true);
+    setTimeout(() => { if (App.transport?.kind === 'gps') Talk.startWake(); }, 4500);
+  }, 600);
 }
 /* =====================================================================
    GRÁFICOS (canvas) — una serie por gráfico, tooltips al tocar
@@ -4698,7 +4706,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.9 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>2.9.1 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
