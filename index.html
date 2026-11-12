@@ -3383,7 +3383,7 @@ const Table = {
   touch() { const n = Date.now(); if (n - this.lastVoice > 6000) this.convoStart = n; this.lastVoice = n; },
   add(t) { t = String(t || '').trim(); if (t.split(/\s+/).length < 2) return; this.items.push({ t, ts: Date.now() }); this.items = this.items.filter(x => Date.now() - x.ts < 120000).slice(-14); },
   force: false,
-  words() { return this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' ').split(/\s+/).filter(Boolean).length; },
+  words(sec = 90) { return this.items.filter(i => Date.now() - i.ts < sec * 1000).map(i => i.t).join(' ').split(/\s+/).filter(Boolean).length; },
   take() { if (!this.force && listenMode() !== 'mesa') return ''; const x = this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' '); return x.length > 900 ? x.slice(-900) : x; },
   clear() { this.items = []; },
 };
@@ -3525,22 +3525,26 @@ const Talk = {
   async wakeHeard(rest, before) {
     if (this.busy) return; this.busy = true;
     try {
-      rest = (rest || '').replace(/^(est[aá]s( ah[ií])?|me escuchas|ah[ií])[\s,?¿.!]*/i, '').trim();
+      rest = (rest || '').trim();
       const nw = t => t.split(/\s+/).filter(Boolean).length;
-      // «¿qué opinas, Josi?», «Josi, tú qué dices»: piden opinión sin decir sobre qué; el tema es lo que se hablaba
+      // «Josi, ¿estás?», «hola», «¿me escuchas?»: solo comprueban que estés ahí; no son una pregunta sobre la charla
+      const presence = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i.test(rest);
+      if (presence) rest = '';
+      // «¿qué opinas, Josi?», «tú qué dices», «¿qué piensas de eso?»: piden opinión sobre lo que se hablaba
       const asksOpinion = /^(t[uú] )?(qu[eé] (opinas|piensas|dices|crees|te parece|har[ií]as|me aconsejas|nos aconsejas)|tu opini[oó]n|(dame|danos|d[ií]nos|d[ií]me|opina|aconséjanos|aconsejanos|ay[uú]danos)\b)/i.test(rest);
+      const refers = nw(rest) <= 7 && /\b(eso|esto|esa|ese|sobre eso|de eso|lo que (dijo|dijeron|dije|dijiste))\b/i.test(rest);
       if (before && nw(before) >= 2) Table.add(before);
-      const ctx = Table.words() >= 4;
+      const ctx = !presence && (nw(before || '') >= 2 || Table.words(25) >= 4);
       micNote('Escuché: «Josi' + (rest ? ', ' + rest : '') + '»', 3000);
-      if ((nw(rest) < 2 || asksOpinion || nw(rest) <= 5) && ctx) {
+      if ((nw(rest) < 2 || asksOpinion || refers) && ctx) {
         Table.force = true;
         try { await this.answer(nw(rest) >= 2 && !asksOpinion ? rest : (rest ? rest + ' (sobre lo que estábamos hablando)' : 'Dame tu opinión sobre lo que estábamos hablando.')); } finally { Table.force = false; Table.clear(); }
         return;
       }
       if (nw(rest) >= 2) { await this.answer(rest); return; }
-      await speakAwait(pick([`Aquí estoy, ${S.userName || 'Edwin'}. Dime.`, 'Aquí estoy. Dime.', 'Te escucho.']));
+      await speakAwait(presence ? pick(['Sí, aquí estoy.', `Aquí estoy, ${S.userName || 'Edwin'}.`, 'Aquí estoy, te escucho.']) : pick([`Dime, ${S.userName || 'Edwin'}.`, 'Aquí estoy. Dime.', 'Te escucho.']));
       this.beep();
-      const q = await listen(7000, true);
+      const q = await listen(6000, true);
       if (q) await this.answer(q);
     } finally { this.busy = false; Table.clear(); this.resumeWake(); }
   },
@@ -3551,19 +3555,26 @@ const Talk = {
     let r;
     try { r = new SRC(); } catch (e) { return; }
     r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = true;
-    r.continuous = true; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0;
+    r.continuous = false; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0;
+    // Chrome corta solo al terminar la frase: «Josi, ¿estás?» se contesta enseguida. Solo si la frase parece seguir se espera un poco más.
+    const go = async () => {
+      clearTimeout(this._gapT); clearTimeout(this._capT); let q = (this._pending || '').trim(); const bef = this._before; this._pending = null; this.stopWake();
+      const long = q.split(/\s+/).filter(Boolean).length >= 8 || /(,|\b(y|pero|que|porque|o|entonces|como|si|cuando|para|con|de|a|el|la|un|una|es que)\s*)$/i.test(q);
+      if (long && !this.busy) { this.busy = true; try { const more = await listen(1800, true, true, { max: LISTEN_MAX[listenMode()] }); if (more) q = (q + ' ' + more).trim(); } finally { this.busy = false; } }
+      this.wakeHeard(q, bef);
+    };
     r.onresult = e => {
       if (Voice.speaking) return; Table.touch();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
-      // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen (solo modo mesa)
+      // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
-      this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim();
-      this._pending = rest; if (!this._wakeAt) { this._wakeAt = Date.now(); this._capT = setTimeout(() => { this.stopWake(); const q = this._pending; this._pending = null; this.wakeHeard(q || '', this._before); }, LISTEN_MAX[listenMode()]); }
+      this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest;
       clearTimeout(this._gapT);
-      this._gapT = setTimeout(() => { clearTimeout(this._capT); const q = this._pending; this._pending = null; this.stopWake(); this.wakeHeard(q || '', this._before); }, rest.split(/\s+/).filter(Boolean).length < 2 ? 1100 : turnGap(rest));
+      if (e.results[e.results.length - 1].isFinal) { go(); return; }
+      this._gapT = setTimeout(go, rest.split(/\s+/).filter(Boolean).length < 2 ? 1200 : 1700); // por si el final tarda en llegar
     };
     r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); micNote(SR_ERR[e.error], 9000); }
@@ -5159,7 +5170,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.7 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.8 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
