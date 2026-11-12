@@ -3005,6 +3005,7 @@ Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene 
 ${live ? 'Reconocimiento de voz: la app reconoce por el timbre a las personas cuyas voces están registradas y te avisa quién habla. Si te avisan de una voz que no conoces, pregunta con naturalidad quién es o pide que te la presenten (por ejemplo "¿y quién nos acompaña?"), y cuando te diga el nombre llama a aprender_voz. Si ves una voz nueva y es obvio que es alguien que ya conoces, no preguntes de más.' : ''}
 ${live ? 'Turnos: cuando varias personas conversan entre ellas, escucha en silencio y no interrumpas ni comentes por tu cuenta: espera a que terminen y responde solo cuando te llamen por tu nombre, te hagan una pregunta directa o te pidan opinión. Si te llaman a mitad de una charla, usa lo que oíste para responder con contexto, sin repetirlo.' : ''}
 ${live ? 'Voz baja: si te piden hablar bajito o susurrar, o dicen que alguien duerme, llama a voz_baja con activar=true y responde breve y en tono suave; cuando pidan voz normal, activar=false. Conocerte: si te piden que les hagas conversación, que les preguntes cosas o que los conozcas mejor, haz UNA pregunta corta a la vez, reacciona con calidez a lo que cuentan, y cada dato estable (gustos, familia, historia, metas, valores) guárdalo con recordar; cambia de tema con naturalidad y para cuando digan «ya basta».' : ''}
+${live ? 'Voces cruzadas: si varias personas hablan a la vez y no entiendes bien, no adivines ni resumas lo que no captaste; pide con humor suave que hablen de a uno o que repitan, y sigue cuando se aclare.' : ''}
 Opinar en grupo: si te piden opinión sin decir sobre qué ("¿qué opinas, Josi?", "¿tú qué dices?"), el tema es lo que se hablaba justo antes. Resume mentalmente lo que dijo cada uno, ubica el punto en discusión y da tu opinión concreta y honesta en 2 o 3 frases, tomando en cuenta lo que dijo cada persona. Nunca respondas "aquí estoy" ni "dime" ni pidas que repitan si lo que oíste basta; si de verdad no se entiende, di en una frase qué entendiste y haz una sola pregunta. En una charla entre varios no tomes partido ciego: señala el punto bueno de cada lado y luego tu opinión.
 Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
@@ -3494,6 +3495,18 @@ const Interview = {
     } finally { this.on = false; Talk.busy = false; Talk.resumeWake(); }
   },
 };
+/* ---------- Charlas cruzadas: si varios hablan a la vez el texto sale dudoso; Josi no lo toma como contexto y, si la llaman, pide repetir ---------- */
+const Overlap = {
+  lows: [], lastSay: 0, LOW: 0.55,
+  low(res) { const c = res && res[0] ? res[0].confidence : 0; return res.isFinal && c > 0 && c < this.LOW; },
+  note() {
+    const n = Date.now(); this.lows = this.lows.filter(t => n - t < 14000); this.lows.push(n);
+    if (this.lows.length < 3 || n - this.lastSay < 900000 || S.overlap === false) return;
+    if (!Josi.on || Talk.busy || Voice.speaking || Mood.heavy() || (App.lastD && Math.abs(App.lastD.a || 0) > 0.8)) return;
+    this.lastSay = n; this.lows = [];
+    Josi.speak(pick(['Uno a la vez, que así no les entiendo ni la mitad.', 'Epa, que estoy escuchando a todos juntos. De a uno, por favor.', 'Si hablan todos a la vez me pierdo. De a uno, que no tengo tantas orejas.']), true);
+  },
+};
 const Talk = {
   busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
   beep() {
@@ -3544,7 +3557,7 @@ const Talk = {
     try { const q = await listen(7000, true); if (q) { micNote('Escuché: «' + q + '»', 4000); await this.answer(q); } }
     finally { this.busy = false; this.resumeWake(); }
   },
-  async wakeHeard(rest, before) {
+  async wakeHeard(rest, before, low) {
     if (this.busy) return; this.busy = true;
     try {
       rest = (rest || '').trim();
@@ -3552,6 +3565,11 @@ const Talk = {
       // «Josi, ¿estás?», «hola», «¿me escuchas?»: solo comprueban que estés ahí; no son una pregunta sobre la charla
       const presence = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i.test(rest);
       if (presence) rest = '';
+      // varias voces a la vez: lo que se entendió es dudoso; mejor pedir que lo repitan que adivinar
+      if (low && !presence && nw(rest) >= 3) {
+        await speakAwait(pick(['Hablaron a la vez y no te capté bien. ¿Me lo repites?', 'Se me cruzaron las voces. ¿Me lo repites, porfa?']));
+        this.beep(); const q2 = await listen(7000, true); if (q2) await this.answer(q2); return;
+      }
       // «¿qué opinas, Josi?», «tú qué dices», «¿qué piensas de eso?»: piden opinión sobre lo que se hablaba
       const asksOpinion = /^(t[uú] )?(qu[eé] (opinas|piensas|dices|crees|te parece|har[ií]as|me aconsejas|nos aconsejas)|tu opini[oó]n|(dame|danos|d[ií]nos|d[ií]me|opina|aconséjanos|aconsejanos|ay[uú]danos)\b)/i.test(rest);
       const refers = nw(rest) <= 7 && /\b(eso|esto|esa|ese|sobre eso|de eso|lo que (dijo|dijeron|dije|dijiste))\b/i.test(rest);
@@ -3583,17 +3601,17 @@ const Talk = {
       clearTimeout(this._gapT); clearTimeout(this._capT); let q = (this._pending || '').trim(); const bef = this._before; this._pending = null; this.stopWake();
       const long = q.split(/\s+/).filter(Boolean).length >= 8 || /(,|\b(y|pero|que|porque|o|entonces|como|si|cuando|para|con|de|a|el|la|un|una|es que)\s*)$/i.test(q);
       if (long && !this.busy) { this.busy = true; try { const more = await listen(1800, true, true, { max: LISTEN_MAX[listenMode()] }); if (more) q = (q + ' ' + more).trim(); } finally { this.busy = false; } }
-      this.wakeHeard(q, bef);
+      this.wakeHeard(q, bef, this._low);
     };
     r.onresult = e => {
       if (Voice.speaking) return; Table.touch();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
-      for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
+      for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (Overlap.low(e.results[i])) { if (wi < 0 || i < wi) Overlap.note(); } else if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
-      this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest;
+      this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest; this._low = Overlap.low(e.results[wi]);
       clearTimeout(this._gapT);
       if (e.results[e.results.length - 1].isFinal) { go(); return; }
       this._gapT = setTimeout(go, rest.split(/\s+/).filter(Boolean).length < 2 ? 1200 : 1700); // por si el final tarda en llegar
@@ -5192,7 +5210,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.9 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.10 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5205,6 +5223,7 @@ function viewSettings() {
     <div class="f"><span>Escucha de conversaciones <span class="d">Cuánto espera Josi antes de darte por terminado. Normal: frases cortas. Larga: hasta 30 s. Mesa: hasta 60 s con varias personas; recuerda lo último que se habló para responder con contexto cuando lo llamas (solo en memoria)</span></span><select id="sListen"><option value="normal" ${listenMode() === 'normal' ? 'selected' : ''}>Normal</option><option value="larga" ${listenMode() === 'larga' ? 'selected' : ''}>Larga (30 s)</option><option value="mesa" ${listenMode() === 'mesa' ? 'selected' : ''}>Mesa (60 s)</option></select></div>
     <div class="f"><span>Sensibilidad del micrófono <span class="d">Para voces bajas en voz en vivo. El reconocimiento normal usa el micrófono del celular tal cual: acerca el teléfono o habla cerca si hablas bajito</span></span><select id="sGain"><option value="1" ${(+S.micGain || 1) === 1 ? 'selected' : ''}>Normal</option><option value="2" ${+S.micGain === 2 ? 'selected' : ''}>Alta</option><option value="3.5" ${+S.micGain === 3.5 ? 'selected' : ''}>Muy alta</option></select></div>
     <div class="f"><span>Modelo inteligente automático <span class="d">Usa un modelo más capaz para opiniones, consejos y charlas largas, y el rápido para órdenes simples. Gasta más de tu cuota gratuita en las charlas profundas</span></span><input type="checkbox" id="sSmart" ${S.aiSmart !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Avisar cuando hablan a la vez <span class="d">Si varias personas hablan juntas, Josi lo nota, no toma ese texto como contexto y pide hablar de uno en uno (como mucho cada 15 minutos)</span></span><input type="checkbox" id="sOverlap" ${S.overlap !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
@@ -5333,6 +5352,7 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
+  $('#sOverlap').onchange = e => { S.overlap = e.target.checked; saveSettings(); };
   $('#sSmart').onchange = e => { S.aiSmart = e.target.checked; saveSettings(); };
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
   $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
