@@ -2273,7 +2273,7 @@ const Josi = {
     if (this.cool[key] && now - this.cool[key] < coolMin * 60000) return;
     if (!this.queue || kind === 'info') this.queue = { kind, key, text, t: now };
   },
-  reset() { this.wasCold = false; this.warmSaid = false; this.queue = null; this.cool = {}; this.coachedAccel = false; this.smoothLaunches = 0; this.goalPraised = false; this.coastT = 0; this.lastEvtSeen = {}; },
+  reset() { this._g = null; this.wasCold = false; this.warmSaid = false; this.queue = null; this.cool = {}; this.coachedAccel = false; this.smoothLaunches = 0; this.goalPraised = false; this.coastT = 0; this.lastEvtSeen = {}; },
   greet() {
     const g = goalKmpl();
     setTimeout(() => { this.lastSpoke = performance.now() - this.gapMs + 30000; }, 50);
@@ -2316,6 +2316,21 @@ const Josi = {
     if (now - q.t > 45000) { this.queue = null; return; }
     const calm = Math.abs(d.a) < 1.0 && !(A.lastEvt.hardBrake != null && d.t - A.lastEvt.hardBrake < 4000) && !(A.lastEvt.hardAccel != null && d.t - A.lastEvt.hardAccel < 4000);
     const gapOk = now - this.lastSpoke > (q.kind === 'info' ? 3000 : this.gapMs);
+    if (calm && gapOk) { this.queue = null; this.cool[q.key] = now; this.speak(q.text); }
+  },
+  // Solo GPS: Josi comenta frenadas y arrancadas bruscas (después, en un momento tranquilo), exceso de velocidad y felicita el manejo suave
+  onGps(d, evt) {
+    if (!this.on || !d) return; const now = performance.now(), G = this._g = this._g || { evtT: 0, lastEvt: now, spd: 0 };
+    if (evt) {
+      G.evtT = now; G.lastEvt = now; const heavy = Mood.heavy();
+      if (evt === 'hardBrake') this.ask('tip', 'brake', pick(heavy ? ['Esa frenada fue fuerte. Si ves venir el semáforo, ve soltando antes.'] : ['Esa frenada fue fuerte. Si ves venir el semáforo, ve soltando antes y llegamos igual de bien.', 'Uy, frenazo. Anticipando un poco el viaje se siente más suave para todos.', 'Frenada fuerte. Mi estómago y yo preferimos las suaves.']));
+      else this.ask('tip', 'accel', pick(heavy ? ['Arrancada fuerte. Más suave se siente mejor.'] : ['Arrancada fuerte. Más suave rinde más y se siente mejor.', 'Ojo con el pie derecho, que esto no es una carrera. Suavecito.', 'Esa arrancada tuvo ganas de cohete. Más tranquilo, que llegamos igual.']));
+    }
+    G.spd = d.speed > S.speedLimit + 5 ? G.spd + 1 : 0;
+    if (G.spd > 20) { G.spd = 0; this.ask('tip', 'speed', `Vamos a ${sayNum(Units.speed(d.speed), 0)}. Un poco menos y el viaje es más seguro y más barato.`, 10); }
+    if (d.speed > 8 && now - G.lastEvt > 600000) { G.lastEvt = now; this.ask('praise', 'smoothg', pick(['Van diez minutos de manejo suave. Se siente muy bien.', 'Qué manejo tan tranquilo. Así da gusto ir de copiloto.']), 15); }
+    const q = this.queue; if (!q) return; if (now - q.t > 45000) { this.queue = null; return; }
+    const calm = Math.abs(d.a || 0) < 1.0 && now - G.evtT > 4000, gapOk = now - this.lastSpoke > (q.kind === 'info' ? 3000 : this.gapMs);
     if (calm && gapOk) { this.queue = null; this.cool[q.key] = now; this.speak(q.text); }
   },
   tripSummary(t) {
@@ -4190,7 +4205,7 @@ const GpsMode = {
     if (kmh < 1.5) { this.stopS++; if (tr instanceof GpsTrip && fresh) { if (this.stopS === 15) tr.stops.push({ lat: g.lat, lon: g.lon, t: Math.round(tr.time), dur: 15 }); else if (this.stopS > 15 && tr.stops.length) tr.stops[tr.stops.length - 1].dur = this.stopS; } } else this.stopS = 0;
     if (tr instanceof GpsTrip) tr.addGps(1, kmh, this.pend, evt, fresh && !this.weak ? g : null);
     this.pend = 0;
-    App.lastD = { speed: kmh, a: this.a || 0, t: Date.now() }; App.vals.speed = kmh;
+    App.lastD = { speed: kmh, a: this.a || 0, t: Date.now() }; App.vals.speed = kmh; Josi.onGps(App.lastD, evt);
     if (++this.n % 2 === 0) this.mapUpdate();
     App.dirty = true;
   },
@@ -5210,7 +5225,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.10 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.11 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
