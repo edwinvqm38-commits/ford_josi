@@ -2534,6 +2534,8 @@ function setDest(name, goalTxt) {
 const AZ_VOICES = [['es-PE-AlexNeural', 'Alex · Perú'], ['es-MX-JorgeNeural', 'Jorge · México'], ['es-US-AlonsoNeural', 'Alonso · EE. UU.'], ['es-ES-AlvaroNeural', 'Álvaro · España'], ['es-CL-LorenzoNeural', 'Lorenzo · Chile'], ['es-CO-GonzaloNeural', 'Gonzalo · Colombia']];
 const xmlEsc = t => String(t).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
 const Voice = {
+  soft: false,
+  setSoft(on) { this.soft = !!on; try { if (Live.gain) Live.gain.gain.value = this.soft ? 0.28 : 1; } catch (e) {} try { if (this.out) this.out.gain.value = this.soft ? 0.28 : 1; } catch (e) {} App.dirty = true; },
   audio: null, ctx: null, analyser: null, buf: null, speaking: false, level: 0, cache: new Map(), azFails: 0, mode: 'tablet',
   azureReady() { return !!(S.azKey && S.azRegion) && this.azFails < 3; },
   async azureBlob(text) {
@@ -2562,7 +2564,7 @@ const Voice = {
       if (!('speechSynthesis' in window)) { setTimeout(() => h.onend && h.onend(), 50); return; }
       const u = new SpeechSynthesisUtterance(text), v = Josi.voice();
       if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'es-419';
-      u.pitch = S.voicePitch ?? 0.85; u.rate = S.voiceRate ?? 1.0;
+      u.pitch = S.voicePitch ?? 0.85; u.rate = (S.voiceRate ?? 1.0) * (Voice.soft ? 0.93 : 1); u.volume = Voice.soft ? 0.3 : 1;
       let started = false, done = false;
       const fin = () => { if (done) return; done = true; clearTimeout(wd); h.onend && h.onend(); };
       const blocked = () => { Josi.pending = text; App.needTap = true; App.dirty = true; };
@@ -2586,7 +2588,7 @@ const Voice = {
         if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.ctx.resume && this.ctx.resume();
         const src = this.ctx.createMediaElementSource(a); this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 512;
-        this.buf = new Uint8Array(this.analyser.fftSize); src.connect(this.analyser); this.analyser.connect(this.ctx.destination);
+        this.buf = new Uint8Array(this.analyser.fftSize); src.connect(this.analyser); this.out = this.ctx.createGain(); this.out.gain.value = this.soft ? 0.28 : 1; this.analyser.connect(this.out); this.out.connect(this.ctx.destination);
       } catch (e) { this.analyser = null; }
       a.onplay = () => { this.speaking = true; this.mode = 'azure'; };
       a.onended = () => { this.speaking = false; URL.revokeObjectURL(a.src); h.onend && h.onend(); };
@@ -2986,6 +2988,7 @@ Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene 
 Ánimo: interpreta cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado o tranquilo) por sus palabras, su forma de decirlas, el momento y lo que ya pasó en la charla; ${live ? 'en voz también por el tono con que lo dice, y llama a registrar_animo cuando notes un cambio claro' : 'pon en "animo" una sola palabra cuando notes un cambio claro (si no hay cambio, déjalo vacío)'}. El campo animo_reciente indica lo último que notaste. Adáptate: con alegría, sigue el ritmo y bromea; con tristeza, pena o preocupación, baja el tono, escucha, valida con una frase cálida y sin chistes; con enojo o estrés, calma y brevedad, sin sermón; con cansancio, ofrece algo práctico (parar a descansar, un café). Nunca digas "detecto que estás triste" como diagnóstico: reacciona con naturalidad, como alguien de la familia que lo nota. Si no estás seguro, pregunta con suavidad. No guardes el ánimo en la memoria a menos que él lo pida.
 ${live ? 'Reconocimiento de voz: la app reconoce por el timbre a las personas cuyas voces están registradas y te avisa quién habla. Si te avisan de una voz que no conoces, pregunta con naturalidad quién es o pide que te la presenten (por ejemplo "¿y quién nos acompaña?"), y cuando te diga el nombre llama a aprender_voz. Si ves una voz nueva y es obvio que es alguien que ya conoces, no preguntes de más.' : ''}
 ${live ? 'Turnos: cuando varias personas conversan entre ellas, escucha en silencio y no interrumpas ni comentes por tu cuenta: espera a que terminen y responde solo cuando te llamen por tu nombre, te hagan una pregunta directa o te pidan opinión. Si te llaman a mitad de una charla, usa lo que oíste para responder con contexto, sin repetirlo.' : ''}
+${live ? 'Voz baja: si te piden hablar bajito o susurrar, o dicen que alguien duerme, llama a voz_baja con activar=true y responde breve y en tono suave; cuando pidan voz normal, activar=false. Conocerte: si te piden que les hagas conversación, que les preguntes cosas o que los conozcas mejor, haz UNA pregunta corta a la vez, reacciona con calidez a lo que cuentan, y cada dato estable (gustos, familia, historia, metas, valores) guárdalo con recordar; cambia de tema con naturalidad y para cuando digan «ya basta».' : ''}
 Opinar en grupo: si te piden opinión sin decir sobre qué ("¿qué opinas, Josi?", "¿tú qué dices?"), el tema es lo que se hablaba justo antes. Resume mentalmente lo que dijo cada uno, ubica el punto en discusión y da tu opinión concreta y honesta en 2 o 3 frases, tomando en cuenta lo que dijo cada persona. Nunca respondas "aquí estoy" ni "dime" ni pidas que repitan si lo que oíste basta; si de verdad no se entiende, di en una frase qué entendiste y haz una sola pregunta. En una charla entre varios no tomes partido ciego: señala el punto bueno de cada lado y luego tu opinión.
 Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
@@ -3185,6 +3188,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
       { name: 'terminar_conversacion', description: 'Cierra la conversación por voz cuando el conductor se despide o ya no quiere hablar.' },
       { name: 'recordar', description: 'Guarda en la memoria un dato estable y útil sobre el conductor o sobre otra persona del auto (indica persona si no es el conductor).', parameters: { type: 'OBJECT', properties: { persona: { type: 'STRING', description: 'nombre de a quién se refiere el dato, si no es el conductor' }, dato: { type: 'STRING', description: 'Frase corta en tercera persona' } }, required: ['dato'] } },
       { name: 'registrar_persona', description: 'Guarda a una persona que viaja en el auto (esposa, familia, amigo) tras confirmar su nombre.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, relacion: { type: 'STRING', description: 'ej. esposa, hijo, amigo' }, nota: { type: 'STRING', description: 'dato breve opcional' } }, required: ['nombre'] } },
+      { name: 'voz_baja', description: 'Hace que hables bajito (susurro suave) cuando piden susurrar, hablar bajo o alguien duerme; con activar=false vuelves a la voz normal.', parameters: { type: 'OBJECT', properties: { activar: { type: 'BOOLEAN' } }, required: ['activar'] } },
       { name: 'aprender_voz', description: 'Aprende la voz desconocida que acaba de hablar, asociándola al nombre que te dieron. Úsala tras preguntar quién es.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' } }, required: ['nombre'] } },
       { name: 'registrar_animo', description: 'Anota en una palabra cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado, tranquilo).', parameters: { type: 'OBJECT', properties: { animo: { type: 'STRING' } }, required: ['animo'] } },
       { name: 'anotar_sitio', description: 'Guarda el sitio donde están ahora (restaurante, café u otro lugar) en Mis sitios.', parameters: { type: 'OBJECT', properties: { nombre: { type: 'STRING' }, tipo: { type: 'STRING', description: 'comida, café, postre u otro' }, nota: { type: 'STRING' } } } },
@@ -3203,7 +3207,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     try {
       const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); if (this.ctx.resume) await this.ctx.resume();
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-      this.gain = this.ctx.createGain(); this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 512; this.gain.connect(this.analyser); this.analyser.connect(this.ctx.destination);
+      this.gain = this.ctx.createGain(); this.gain.gain.value = Voice.soft ? 0.28 : 1; this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 512; this.gain.connect(this.analyser); this.analyser.connect(this.ctx.destination);
       this.prevA = Voice.analyser; this.prevB = Voice.buf; Voice.analyser = this.analyser; Voice.buf = new Uint8Array(this.analyser.fftSize);
       await this.open(); await this.micStart();
     } catch (e) {
@@ -3315,6 +3319,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
     if (n === 'recordar') return Memory.add(a.dato, a.persona || People.who()) ? 'anotado' : 'no se pudo guardar';
     if (n === 'olvidar') return Memory.forget(a.palabra) + ' recuerdos borrados';
     if (n === 'registrar_persona') { if (!People.add(a.nombre, a.relacion, a.nota)) return 'nombre no válido'; People.setSpeaker(a.nombre); return 'anotado'; }
+    if (n === 'voz_baja') { Voice.setSoft(a.activar !== false); return 'ok'; }
     if (n === 'aprender_voz') return VoiceID.bindUnknown(a.nombre) ? 'voz aprendida' : 'no tengo suficiente audio reciente de esa voz';
     if (n === 'registrar_animo') { Mood.set(a.animo); return 'ok'; }
     if (n === 'anotar_sitio') { const x = Spots.addHere(a.nombre, a.tipo, a.nota); return x ? 'anotado: ' + x.name : 'no tengo la ubicación del GPS'; }
@@ -3346,6 +3351,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
   feed(c) {
     if (!this.on) return;
     if (!this.aiSpeaking && VoiceID.has()) VoiceID.push(c, this.rate);
+    { const g = +S.micGain || 1; if (g > 1) { const q = new Float32Array(c.length); for (let i = 0; i < c.length; i++) { const v = c[i] * g; q[i] = v > 0.95 ? 0.95 : v < -0.95 ? -0.95 : v; } c = q; } }
     let e = 0, k = 0; for (let i = 0; i < c.length; i += 8) { e += c[i] * c[i]; k++; } this.micLevel = Math.min(1, Math.sqrt(e / Math.max(1, k)) * 7);
     const p = new Float32Array(this.pend.length + c.length); p.set(this.pend); p.set(c, this.pend.length); this.pend = p;
     const ratio = this.rate / 16000, N = 640, step = Math.round(N * ratio);
@@ -3423,6 +3429,49 @@ const Floor = {
 };
 setInterval(() => Floor.tick(), 1000);
 
+/* ---------- Comandos rápidos de voz: hablar bajito / normal ---------- */
+function quickCmd(q) {
+  const t = normName(q || '');
+  if (/\b(susurra\w*|habla(me|nos)? (muy |mas |un poco mas )?(bajito|bajo|suave|despacito)|(en )?voz baja|baja la voz|mas bajito|estoy susurrando|(esta|estan|se quedo|se durmio) (durmiendo|dormid[oa]s?)|hay alguien durmiendo)\b/.test(t)) { Voice.setSoft(true); return 'Entendido, hablo bajito.'; }
+  if (/\b(habla (normal|fuerte|alto|mas fuerte)|voz normal|sube la voz|ya no susurres|ya desperto|ya se desperto|puedes hablar normal)\b/.test(t)) { Voice.setSoft(false); return 'Listo, vuelvo a mi voz normal.'; }
+  return null;
+}
+
+/* ---------- Conocerte: Josi te hace preguntas, una a la vez, y guarda en su memoria lo estable que le cuentas ---------- */
+const Interview = {
+  on: false,
+  BANK: ['¿Cómo era tu familia cuando eras niño?', '¿Cuál es el mejor recuerdo que tienes con Natalia?', '¿Qué comida te hace sentir en casa?', '¿Qué sueño te gustaría cumplir en los próximos años?', '¿Qué te hace reír de verdad?', '¿Qué música te acompaña cuando manejas y por qué?', '¿Cómo es un día perfecto para ti?', '¿Qué te preocupa últimamente y no sueles contar?', '¿Qué lugar te gustaría conocer algún día?', '¿Qué consejo te dio alguien que nunca olvidaste?', '¿Cómo empezaste a trabajar en lo que haces?', '¿Qué es lo que más agradeces hoy?'],
+  match(q) { return /(hazme (conversacion|compania|preguntas)|preguntame (cosas|algo|lo que quieras|para conocerme)|que me conozcas|conoceme|conocerme (mas|mejor)|quiero que me conozcas|hazme platica)/.test(normName(q || '')); },
+  stopRe: /^(ya|basta|para|paremos|suficiente|termina|terminemos|detente|no quiero|luego|despues|otro dia)\b|\b(ya basta|para por hoy|sigamos otro dia|dejemoslo)\b/,
+  async digest(ans, lastQ, asked) {
+    if (!S.aiKey || performance.now() < (App.aiCoolUntil || 0)) return null; Usage.req();
+    const sys = `Eres ${botName()}, el copiloto y compañero de la familia de ${S.userName || 'Edwin'}, y estás conociéndolo mejor en una charla tranquila. Con lo que acaba de contar: 1) reacciona en UNA o DOS frases cálidas y naturales (con humor suave solo si el tema es ligero; si es triste o delicado, con calma y respeto, sin chistes); 2) extrae hasta 3 hechos estables y útiles para recordarlo (gustos, familia, historia, metas, valores, miedos), cada uno como frase corta en tercera persona (ej.: «A ${S.userName || 'Edwin'} le encanta el ceviche de su mamá»), sin datos sensibles como claves o números; si no hay nada estable, lista vacía; 3) propón la SIGUIENTE pregunta: una sola, corta, abierta, distinta de las ya hechas, que nazca de lo que contó o abra un tema nuevo (familia, infancia, trabajo, fe, sueños, gustos, humor, miedos, recuerdos). Habla en español peruano, sin lista ni emojis. Ya sabes de él: ${JSON.stringify(Memory.ctx().slice(0, 18))}. Preguntas ya hechas: ${JSON.stringify(asked.slice(-8))}. Responde SOLO JSON: {"reaccion":"","hechos":[],"siguiente":""}`;
+    const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: ans ? `Pregunta que te hizo: «${lastQ}». Respondió: «${ans}»` : 'Empecemos: dame la primera pregunta.' }] }], generationConfig: { temperature: 0.7, responseMimeType: 'application/json', maxOutputTokens: 400 } };
+    const r = await geminiCall((S.aiModel || 'gemini-flash-lite-latest').trim(), JSON.stringify(body), 14000); if (!r.ok) return null;
+    try { const o = JSON.parse(r.j.candidates[0].content.parts.map(x => x.text || '').join('')); return { reaccion: String(o.reaccion || ''), hechos: Array.isArray(o.hechos) ? o.hechos.map(String).slice(0, 3) : [], siguiente: String(o.siguiente || '') }; } catch (e) { return null; }
+  },
+  async run() {
+    if (this.on) return; if (!Josi.on) { micNote('Activa la voz de Josi para que pueda hacerte preguntas.'); return; }
+    this.on = true; Talk.busy = true; const asked = [], bank = [...this.BANK].sort(() => Math.random() - 0.5); let saved = 0, silent = 0, n = 0; const nm = S.userName || 'Edwin';
+    try {
+      await Talk.stopWakeAsync();
+      await speakAwait(pick([`Dale, ${nm}. Te voy preguntando de a poquito y tú me cuentas lo que quieras. Si quieres parar, dime «ya basta».`, `Con gusto, ${nm}. Una pregunta a la vez, sin apuro. Para terminar, dime «ya basta».`]));
+      let first = await this.digest(null, '', asked); let q = (first && first.siguiente) || bank.shift();
+      while (n < 10 && this.on) {
+        await speakAwait(q); asked.push(q); Talk.beep();
+        const ans = await listen(14000, true, true, { max: 60000 });
+        if (!ans) { if (++silent >= 2) { await speakAwait('Parece que ya no es el momento. Seguimos otro rato.'); break; } await speakAwait('¿Sigues por ahí? Si prefieres, paramos.'); continue; }
+        silent = 0; const words = ans.split(/\s+/).filter(Boolean).length;
+        if (words <= 7 && this.stopRe.test(normName(ans))) break;
+        n++; const r = await this.digest(ans, q, asked);
+        if (r) { for (const h of r.hechos) { const had = Memory.list.some(m => normName(m.t) === normName(String(h).replace(/\s+/g, ' ').trim().slice(0, 160))); if (Memory.add(h, People.who()) && !had) saved++; } if (r.reaccion) await speakAwait(r.reaccion); q = r.siguiente || bank.shift(); }
+        else { if (words >= 4 && Memory.add(`${nm} contó: ${ans.slice(0, 130)}`, People.who())) saved++; q = bank.shift(); }
+        if (!q) break;
+      }
+      await speakAwait(saved ? `Gracias por contarme, ${nm}. Guardé ${saved} ${saved === 1 ? 'cosa' : 'cosas'} para conocerte mejor.` : `Gracias por conversar conmigo, ${nm}.`);
+    } finally { this.on = false; Talk.busy = false; Talk.resumeWake(); }
+  },
+};
 const Talk = {
   busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
   beep() {
@@ -3436,6 +3485,8 @@ const Talk = {
   },
   async answer(q, depth = 0) {
     logLine('i', 'Tú: ' + q); if (!/^\[aviso/i.test(q)) App.lastUser = performance.now();
+    { const qc = quickCmd(q); if (qc) { await speakAwait(qc); return; } }
+    if (!/^\[aviso/i.test(q) && !Interview.on && Interview.match(q)) { await Interview.run(); return; }
     // Con clave e internet, todo pasa por la IA para conversar de forma natural.
     if (S.aiKey) {
       App.thinking = true; App.dirty = true;
@@ -5108,7 +5159,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.6 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.7 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5119,6 +5170,7 @@ function viewSettings() {
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
     <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
     <div class="f"><span>Escucha de conversaciones <span class="d">Cuánto espera Josi antes de darte por terminado. Normal: frases cortas. Larga: hasta 30 s. Mesa: hasta 60 s con varias personas; recuerda lo último que se habló para responder con contexto cuando lo llamas (solo en memoria)</span></span><select id="sListen"><option value="normal" ${listenMode() === 'normal' ? 'selected' : ''}>Normal</option><option value="larga" ${listenMode() === 'larga' ? 'selected' : ''}>Larga (30 s)</option><option value="mesa" ${listenMode() === 'mesa' ? 'selected' : ''}>Mesa (60 s)</option></select></div>
+    <div class="f"><span>Sensibilidad del micrófono <span class="d">Para voces bajas en voz en vivo. El reconocimiento normal usa el micrófono del celular tal cual: acerca el teléfono o habla cerca si hablas bajito</span></span><select id="sGain"><option value="1" ${(+S.micGain || 1) === 1 ? 'selected' : ''}>Normal</option><option value="2" ${+S.micGain === 2 ? 'selected' : ''}>Alta</option><option value="3.5" ${+S.micGain === 3.5 ? 'selected' : ''}>Muy alta</option></select></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
@@ -5247,6 +5299,7 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
+  $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
   $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
   $('#sTalkTest').onclick = () => {
     openModal(`<h2>Prueba de conversación</h2><p class="muted" id="ttInfo">Toca «Empezar» y conversen con naturalidad, con pausas normales. Josi solo escucha y escribe lo que entiende; no responde. Termina cuando haya un silencio largo o a los ${LISTEN_MAX[listenMode()] / 1000} s.</p><div id="ttBox" style="min-height:110px;max-height:220px;overflow:auto;background:var(--s2);border-radius:12px;padding:10px;margin:8px 0;white-space:pre-wrap"></div>
