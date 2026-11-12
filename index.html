@@ -2862,6 +2862,7 @@ const Memory = {
 const CKEY = 'ecodrive.convo.v1';
 const CVSENS = /enfermed|diagn[oó]st[ií]c|c[aá]ncer|tumor|deuda|embarg|divorci|infiel|pelea con|depres|ansied|suicid|embaraz|abort|adicci|quiebra|despid|demanda|violen|abuso|luto|falleci/i;
 const Convo = {
+  _sb: false,
   d: store.get(CKEY, { on: true, sessions: [], trips: [] }),
   save() { if (!store.set(CKEY, this.d)) { this.d.sessions.length = Math.min(this.d.sessions.length, 8); store.set(CKEY, this.d); } },
   get on() { return this.d.on !== false; },
@@ -2871,7 +2872,7 @@ const Convo = {
     if (s0 && n - s0.last < 1800000 && !!s0.sim === this.simNow()) return s0;
     const ns = { id: 'c' + n.toString(36), ts: n, last: n, who: [], turns: [], sim: this.simNow() || undefined, dest: App.dest || undefined };
     this.d.sessions.unshift(ns); this.d.sessions.length = Math.min(this.d.sessions.length, 60);
-    this.d.sessions.forEach((x, i) => { if (i >= 10 && x.turns.length) { x.topics = this.topics(x); x.turns = []; } });
+    this.d.sessions.forEach((x, i) => { if (i >= 10 && x.turns.length) { x.topics = x.sum || this.topics(x); x.turns = []; } });
     return ns;
   },
   topics(x) { return x.turns.filter(t => t.r === 'u' && !t.sens).slice(0, 3).map(t => t.t.slice(0, 70)).join(' / '); },
@@ -2895,16 +2896,31 @@ const Convo = {
     const sim = this.simNow(), all = this.d.sessions.filter(x => !!x.sim === sim), cur = this.d.sessions[0];
     const prev = mode === 'rel' ? [] : all.filter(x => x !== cur || Date.now() - x.last > 120000).slice(0, 2).map(x => ({
       cuando: this.when(x.ts), con: x.who.length ? x.who.join(', ') : undefined,
-      resumen: x.turns.length ? x.turns.filter(t => !t.sens).slice(-6).map(t => (t.r === 'u' ? (t.p || 'Él') : 'Josi') + ': ' + t.t.slice(0, 90)).join(' | ') : (x.topics || undefined) })).filter(x => x.resumen);
+      resumen: x.sum ? x.sum + (x.temas && x.temas.length ? ' (temas: ' + x.temas.join(', ') + ')' : '') : x.turns.length ? x.turns.filter(t => !t.sens).slice(-6).map(t => (t.r === 'u' ? (t.p || 'Él') : 'Josi') + ': ' + t.t.slice(0, 90)).join(' | ') : (x.topics || undefined) })).filter(x => x.resumen);
     const words = normName(q || '').split(/[^a-z0-9ñ]+/).filter(w => w.length >= 4), rel = [];
     if (words.length) for (const x of all) for (const t of x.turns) {
       if (x === cur && Date.now() - x.last < 600000) continue;
       const tn = normName(t.t), sc = words.reduce((a, w) => a + (tn.includes(w) ? 1 : 0), 0);
       if (sc >= (words.length > 2 ? 2 : 1)) rel.push({ sc, o: { cuando: this.when(t.ts), quien: t.r === 'u' ? (t.p || 'él') : 'Josi', dijo: t.t.slice(0, 140), sensible: t.sens ? 'sí: solo si él lo vuelve a tocar' : undefined } });
     }
+    for (const x of all) if (x.sum && x !== cur && words.length) { const tn = normName(x.sum + ' ' + (x.temas || []).join(' ')), sc = words.reduce((a, w) => a + (tn.includes(w) ? 1 : 0), 0); if (sc >= (words.length > 2 ? 2 : 1)) rel.push({ sc: sc + 0.5, o: { cuando: this.when(x.ts), quien: 'resumen de esa charla' + (x.who.length ? ' con ' + x.who.join(', ') : ''), dijo: x.sum.slice(0, 220) } }); }
     rel.sort((a, b) => b.sc - a.sc);
     const out = { charlas_previas: prev.length ? prev : undefined, recuerdos_relacionados: rel.length ? rel.slice(0, 3).map(r => r.o) : undefined, viajes_recientes: mode === 'rel' && !trips ? [] : this.d.trips.filter(t => !!t.sim === sim).slice(0, 3).map(t => t.t) };
     return out.charlas_previas || out.recuerdos_relacionados || out.viajes_recientes.length ? out : undefined;
+  },
+  // al cerrarse una charla (30 min sin hablar) Josi la resume en pocas frases para recordarla mejor y buscarla después
+  async summarize() {
+    if (!this.on || !S.aiKey || this._sb || performance.now() < (App.aiCoolUntil || 0) || App.thinking) return;
+    const n = Date.now(), cur = this.d.sessions[0];
+    const x = this.d.sessions.find(q => q !== cur ? n - q.last > 1800000 && !q.sum && (q.sumTried || 0) < 2 && q.turns.filter(t => t.r === 'u' && !t.sens).length >= 3 : n - q.last > 1800000 && !q.sum && (q.sumTried || 0) < 2 && q.turns.filter(t => t.r === 'u' && !t.sens).length >= 3);
+    if (!x) return; this._sb = true; x.sumTried = (x.sumTried || 0) + 1; this.save();
+    try {
+      const txt = x.turns.filter(t => !t.sens).map(t => (t.r === 'u' ? (t.p || S.userName || 'Edwin') : botName()) + ': ' + t.t).join('\n').slice(-2200); Usage.req();
+      const body = { systemInstruction: { parts: [{ text: 'Resume esta charla entre una familia y su copiloto del auto en 2 o 3 frases en español: quiénes hablaron, de qué temas, qué se decidió o quedó pendiente y cómo se sentían, solo si se nota. No inventes. No incluyas datos sensibles (claves, números). Luego da hasta 4 temas de una o dos palabras. Responde SOLO JSON: {"resumen":"","temas":[]}' }] }, contents: [{ role: 'user', parts: [{ text: txt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 300 } };
+      const r = await geminiCall((S.aiModel || 'gemini-flash-lite-latest').trim(), JSON.stringify(body), 15000); if (!r.ok) return;
+      const o = JSON.parse(r.j.candidates[0].content.parts.map(q => q.text || '').join('')); const sm = String(o.resumen || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+      if (sm.length > 15 && !Memory.bad(sm)) { x.sum = sm; x.temas = Array.isArray(o.temas) ? o.temas.map(v => String(v).slice(0, 24)).slice(0, 4) : []; this.save(); }
+    } catch (e) {} finally { this._sb = false; }
   },
   tripNote(t) {
     if (!this.on || !t) return;
@@ -3051,6 +3067,9 @@ function buildCtx(q) {
   return ctx;
 }
 const AI_HIST = [];
+// preguntas que piden criterio, consejo o charla larga usan el modelo más capaz; las órdenes simples, el rápido
+const DEEPQ = /\b(opin\w*|piensas|aconsej\w*|consejo|que hago|que me recomiendas|decidir|decision|problema|preocup\w*|triste|ansios\w*|estres\w*|matrimonio|natalia|pareja|familia|dios|biblia|versiculo|oracion|perdon\w*|dinero|deuda|explic\w*|por que|profundiz\w*|cuentame|hablemos|conversemos|que te parece|ayudame a)\b/;
+function deepQuery(q) { const t = normName(q || ''); return !!(Table.force || Interview.on || DEEPQ.test(t) || t.split(/\s+/).filter(Boolean).length >= 22); }
 async function askAI(q) {
   if (!S.aiKey) return null;
   App.aiErr = null;
@@ -3066,7 +3085,9 @@ Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas co
 ${companyRules(false)}
 Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":"","sitio":"","animo":""}`;
   const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}${Table.take() ? '\n\nLo que se hablaba en el auto justo antes de que te llamaran (no estaban hablando contigo; es el tema sobre el que te piden opinión o ayuda; no lo repitas): «' + Table.take() + '»' : ''}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' }, animo: { type: 'STRING' } }, required: ['say'] } } };
-  const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
+  const baseM = (S.aiModel || 'gemini-flash-lite-latest').trim(), deepQ = S.aiSmart !== false && baseM === 'gemini-flash-lite-latest' && deepQuery(q);
+  if (deepQ) logLine('i', 'Pensando a fondo con un modelo más capaz');
+  const models = [...new Set([deepQ ? 'gemini-flash-latest' : baseM, baseM, 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
     const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms);
@@ -3428,6 +3449,7 @@ const Floor = {
   },
 };
 setInterval(() => Floor.tick(), 1000);
+setTimeout(() => Convo.summarize(), 25000); setInterval(() => Convo.summarize(), 240000);
 
 /* ---------- Comandos rápidos de voz: hablar bajito / normal ---------- */
 function quickCmd(q) {
@@ -3447,7 +3469,7 @@ const Interview = {
     if (!S.aiKey || performance.now() < (App.aiCoolUntil || 0)) return null; Usage.req();
     const sys = `Eres ${botName()}, el copiloto y compañero de la familia de ${S.userName || 'Edwin'}, y estás conociéndolo mejor en una charla tranquila. Con lo que acaba de contar: 1) reacciona en UNA o DOS frases cálidas y naturales (con humor suave solo si el tema es ligero; si es triste o delicado, con calma y respeto, sin chistes); 2) extrae hasta 3 hechos estables y útiles para recordarlo (gustos, familia, historia, metas, valores, miedos), cada uno como frase corta en tercera persona (ej.: «A ${S.userName || 'Edwin'} le encanta el ceviche de su mamá»), sin datos sensibles como claves o números; si no hay nada estable, lista vacía; 3) propón la SIGUIENTE pregunta: una sola, corta, abierta, distinta de las ya hechas, que nazca de lo que contó o abra un tema nuevo (familia, infancia, trabajo, fe, sueños, gustos, humor, miedos, recuerdos). Habla en español peruano, sin lista ni emojis. Ya sabes de él: ${JSON.stringify(Memory.ctx().slice(0, 18))}. Preguntas ya hechas: ${JSON.stringify(asked.slice(-8))}. Responde SOLO JSON: {"reaccion":"","hechos":[],"siguiente":""}`;
     const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: ans ? `Pregunta que te hizo: «${lastQ}». Respondió: «${ans}»` : 'Empecemos: dame la primera pregunta.' }] }], generationConfig: { temperature: 0.7, responseMimeType: 'application/json', maxOutputTokens: 400 } };
-    const r = await geminiCall((S.aiModel || 'gemini-flash-lite-latest').trim(), JSON.stringify(body), 14000); if (!r.ok) return null;
+    const r = await geminiCall(S.aiSmart !== false && !S.aiModel ? 'gemini-flash-latest' : (S.aiModel || 'gemini-flash-lite-latest').trim(), JSON.stringify(body), 14000); if (!r.ok) return null;
     try { const o = JSON.parse(r.j.candidates[0].content.parts.map(x => x.text || '').join('')); return { reaccion: String(o.reaccion || ''), hechos: Array.isArray(o.hechos) ? o.hechos.map(String).slice(0, 3) : [], siguiente: String(o.siguiente || '') }; } catch (e) { return null; }
   },
   async run() {
@@ -5170,7 +5192,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.8 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.9 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5182,6 +5204,7 @@ function viewSettings() {
     <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
     <div class="f"><span>Escucha de conversaciones <span class="d">Cuánto espera Josi antes de darte por terminado. Normal: frases cortas. Larga: hasta 30 s. Mesa: hasta 60 s con varias personas; recuerda lo último que se habló para responder con contexto cuando lo llamas (solo en memoria)</span></span><select id="sListen"><option value="normal" ${listenMode() === 'normal' ? 'selected' : ''}>Normal</option><option value="larga" ${listenMode() === 'larga' ? 'selected' : ''}>Larga (30 s)</option><option value="mesa" ${listenMode() === 'mesa' ? 'selected' : ''}>Mesa (60 s)</option></select></div>
     <div class="f"><span>Sensibilidad del micrófono <span class="d">Para voces bajas en voz en vivo. El reconocimiento normal usa el micrófono del celular tal cual: acerca el teléfono o habla cerca si hablas bajito</span></span><select id="sGain"><option value="1" ${(+S.micGain || 1) === 1 ? 'selected' : ''}>Normal</option><option value="2" ${+S.micGain === 2 ? 'selected' : ''}>Alta</option><option value="3.5" ${+S.micGain === 3.5 ? 'selected' : ''}>Muy alta</option></select></div>
+    <div class="f"><span>Modelo inteligente automático <span class="d">Usa un modelo más capaz para opiniones, consejos y charlas largas, y el rápido para órdenes simples. Gasta más de tu cuota gratuita en las charlas profundas</span></span><input type="checkbox" id="sSmart" ${S.aiSmart !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
@@ -5310,6 +5333,7 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
+  $('#sSmart').onchange = e => { S.aiSmart = e.target.checked; saveSettings(); };
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
   $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
   $('#sTalkTest').onclick = () => {
