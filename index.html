@@ -2986,6 +2986,7 @@ Sitios guardados: si en los datos viene sitios_guardados_cerca, y solo si viene 
 Ánimo: interpreta cómo se siente quien habla (alegre, triste, apenado, molesto, estresado, cansado, preocupado, asustado o tranquilo) por sus palabras, su forma de decirlas, el momento y lo que ya pasó en la charla; ${live ? 'en voz también por el tono con que lo dice, y llama a registrar_animo cuando notes un cambio claro' : 'pon en "animo" una sola palabra cuando notes un cambio claro (si no hay cambio, déjalo vacío)'}. El campo animo_reciente indica lo último que notaste. Adáptate: con alegría, sigue el ritmo y bromea; con tristeza, pena o preocupación, baja el tono, escucha, valida con una frase cálida y sin chistes; con enojo o estrés, calma y brevedad, sin sermón; con cansancio, ofrece algo práctico (parar a descansar, un café). Nunca digas "detecto que estás triste" como diagnóstico: reacciona con naturalidad, como alguien de la familia que lo nota. Si no estás seguro, pregunta con suavidad. No guardes el ánimo en la memoria a menos que él lo pida.
 ${live ? 'Reconocimiento de voz: la app reconoce por el timbre a las personas cuyas voces están registradas y te avisa quién habla. Si te avisan de una voz que no conoces, pregunta con naturalidad quién es o pide que te la presenten (por ejemplo "¿y quién nos acompaña?"), y cuando te diga el nombre llama a aprender_voz. Si ves una voz nueva y es obvio que es alguien que ya conoces, no preguntes de más.' : ''}
 ${live ? 'Turnos: cuando varias personas conversan entre ellas, escucha en silencio y no interrumpas ni comentes por tu cuenta: espera a que terminen y responde solo cuando te llamen por tu nombre, te hagan una pregunta directa o te pidan opinión. Si te llaman a mitad de una charla, usa lo que oíste para responder con contexto, sin repetirlo.' : ''}
+Opinar en grupo: si te piden opinión sin decir sobre qué ("¿qué opinas, Josi?", "¿tú qué dices?"), el tema es lo que se hablaba justo antes. Resume mentalmente lo que dijo cada uno, ubica el punto en discusión y da tu opinión concreta y honesta en 2 o 3 frases, tomando en cuenta lo que dijo cada persona. Nunca respondas "aquí estoy" ni "dime" ni pidas que repitan si lo que oíste basta; si de verdad no se entiende, di en una frase qué entendiste y haz una sola pregunta. En una charla entre varios no tomes partido ciego: señala el punto bueno de cada lado y luego tu opinión.
 Consejo: cuando te pidan tu opinión o consejo sobre una decisión, un conflicto, el matrimonio, la familia, el trabajo, el dinero o la conciencia, y la situación lo amerite, aconseja con una mirada bíblica y según quién pregunte, como pastor, como amigo, como novio o como esposo (el rol que pida o el que encaje). Primero tu opinión honesta y breve en lenguaje sencillo, apoyada en principios de la Biblia (sabiduría de Proverbios, enseñanzas de Jesús, amor, perdón, honestidad, humildad, paciencia, prudencia); cita un pasaje solo si estás seguro de él, sin inventar versículos. Prioridad absoluta a Edwin y a Natalia, su esposa: cuida su matrimonio y su familia, y si habla Natalia dirígete a ella con el mismo cariño. Nada de sermones ni de imponer, ni en charlas triviales o sin que lo pidan; con calidez y sin juzgar; si es tema de salud, legal o peligro, recomienda además ayuda profesional.
 Memoria de conversaciones: en los datos pueden venir charlas_previas, recuerdos_relacionados y viajes_recientes. Úsalos con mucho criterio: menciona un recuerdo solo si viene al caso y aporta algo, de forma natural y sin recitar ni forzarlo. Nunca saques por tu cuenta temas delicados (salud, dinero, pareja, familia, intimidad espiritual); si algo viene marcado como sensible, tócalo solo si la persona lo vuelve a traer. Si hay más de una persona en el auto, o no estás seguro de quién habla, no uses recuerdos personales ni repitas delante de uno lo que otro dijo en confianza. Si te piden olvidar algo, bórralo con olvidar. Eres buen compañero de camino: si hablan poco, sácales conversación de a poco con una pregunta ligera, una anécdota o una broma suave, sin insistir; si no responden, déjalos tranquilos. Si hay recuerdos del lugar, coméntalos con naturalidad ("¿te acuerdas que aquí…?"). Si dicen "cenamos aquí con…" o algo parecido y hay lugar_cercano, guarda el recuerdo con el nombre del lugar y de la persona.`;
 }
@@ -3061,7 +3062,7 @@ Acciones: pon "action" solo si lo pidió claramente: "marcar_bache" (marcar bach
 Memoria: el campo memoria de los datos son cosas que ya sabes de él; úsalas con naturalidad, sin recitarlas. Si pide que recuerdes algo ("recuerda que…", "anota…") o menciona un dato estable y útil sobre él (nombres, gustos, rutinas, preferencias de manejo), ponlo en "recordar" como frase corta en tercera persona y confírmalo en tu respuesta con "anotado". Si pide olvidar algo, pon una palabra clave en "olvidar". Nunca guardes claves, contraseñas, datos de tarjetas ni de salud.
 ${companyRules(false)}
 Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","end":false,"buscar":false,"recordar":"","olvidar":"","persona":"","habla":"","renombrar":"","sitio":"","animo":""}`;
-  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}${Table.take() ? '\n\nLo que se hablaba en el auto justo antes de que te llamaran (no estaban hablando contigo; úsalo solo como contexto y no lo repitas): «' + Table.take() + '»' : ''}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' }, animo: { type: 'STRING' } }, required: ['say'] } } };
+  const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [...AI_HIST.slice(-(App.ctxPlan?.hist || 16)), { role: 'user', parts: [{ text: `Datos del auto: ${JSON.stringify(ctx)}${Table.take() ? '\n\nLo que se hablaba en el auto justo antes de que te llamaran (no estaban hablando contigo; es el tema sobre el que te piden opinión o ayuda; no lo repitas): «' + Table.take() + '»' : ''}\n\nPregunta: ${q}` }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.85, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { say: { type: 'STRING' }, action: { type: 'STRING' }, end: { type: 'BOOLEAN' }, buscar: { type: 'BOOLEAN' }, recordar: { type: 'STRING' }, olvidar: { type: 'STRING' }, persona: { type: 'STRING' }, habla: { type: 'STRING' }, renombrar: { type: 'STRING' }, sitio: { type: 'STRING' }, animo: { type: 'STRING' } }, required: ['say'] } } };
   const models = [...new Set([(S.aiModel || 'gemini-flash-lite-latest').trim(), 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
@@ -3374,7 +3375,9 @@ const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 const Table = {
   items: [],
   add(t) { t = String(t || '').trim(); if (t.split(/\s+/).length < 2) return; this.items.push({ t, ts: Date.now() }); this.items = this.items.filter(x => Date.now() - x.ts < 120000).slice(-14); },
-  take() { if (listenMode() !== 'mesa') return ''; const x = this.items.filter(i => Date.now() - i.ts < 75000).map(i => i.t).join(' '); return x.length > 600 ? x.slice(-600) : x; },
+  force: false,
+  words() { return this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' ').split(/\s+/).filter(Boolean).length; },
+  take() { if (!this.force && listenMode() !== 'mesa') return ''; const x = this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' '); return x.length > 900 ? x.slice(-900) : x; },
   clear() { this.items = []; },
 };
 const Talk = {
@@ -3425,12 +3428,22 @@ const Talk = {
     try { const q = await listen(7000, true); if (q) { micNote('Escuché: «' + q + '»', 4000); await this.answer(q); } }
     finally { this.busy = false; this.resumeWake(); }
   },
-  async wakeHeard(rest) {
+  async wakeHeard(rest, before) {
     if (this.busy) return; this.busy = true;
     try {
       rest = (rest || '').replace(/^(est[aá]s( ah[ií])?|me escuchas|ah[ií])[\s,?¿.!]*/i, '').trim();
+      const nw = t => t.split(/\s+/).filter(Boolean).length;
+      // «¿qué opinas, Josi?», «Josi, tú qué dices»: piden opinión sin decir sobre qué; el tema es lo que se hablaba
+      const asksOpinion = /^(t[uú] )?(qu[eé] (opinas|piensas|dices|crees|te parece|har[ií]as|me aconsejas|nos aconsejas)|tu opini[oó]n|(dame|danos|d[ií]nos|d[ií]me|opina|aconséjanos|aconsejanos|ay[uú]danos)\b)/i.test(rest);
+      if (before && nw(before) >= 2) Table.add(before);
+      const ctx = Table.words() >= 4;
       micNote('Escuché: «Josi' + (rest ? ', ' + rest : '') + '»', 3000);
-      if (rest.split(/\s+/).filter(Boolean).length >= 2) { await this.answer(rest); return; }
+      if ((nw(rest) < 2 || asksOpinion || nw(rest) <= 5) && ctx) {
+        Table.force = true;
+        try { await this.answer(nw(rest) >= 2 && !asksOpinion ? rest : (rest ? rest + ' (sobre lo que estábamos hablando)' : 'Dame tu opinión sobre lo que estábamos hablando.')); } finally { Table.force = false; Table.clear(); }
+        return;
+      }
+      if (nw(rest) >= 2) { await this.answer(rest); return; }
       await speakAwait(pick([`Aquí estoy, ${S.userName || 'Edwin'}. Dime.`, 'Aquí estoy. Dime.', 'Te escucho.']));
       this.beep();
       const q = await listen(7000, true);
@@ -3452,9 +3465,10 @@ const Talk = {
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
-      this._pending = rest; if (!this._wakeAt) { this._wakeAt = Date.now(); this._capT = setTimeout(() => { this.stopWake(); const q = this._pending; this._pending = null; this.wakeHeard(q || ''); }, LISTEN_MAX[listenMode()]); }
+      this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim();
+      this._pending = rest; if (!this._wakeAt) { this._wakeAt = Date.now(); this._capT = setTimeout(() => { this.stopWake(); const q = this._pending; this._pending = null; this.wakeHeard(q || '', this._before); }, LISTEN_MAX[listenMode()]); }
       clearTimeout(this._gapT);
-      this._gapT = setTimeout(() => { clearTimeout(this._capT); const q = this._pending; this._pending = null; this.stopWake(); this.wakeHeard(q || ''); }, rest.split(/\s+/).filter(Boolean).length < 2 ? 1100 : turnGap(rest));
+      this._gapT = setTimeout(() => { clearTimeout(this._capT); const q = this._pending; this._pending = null; this.stopWake(); this.wakeHeard(q || '', this._before); }, rest.split(/\s+/).filter(Boolean).length < 2 ? 1100 : turnGap(rest));
     };
     r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); micNote(SR_ERR[e.error], 9000); }
@@ -3465,7 +3479,7 @@ const Talk = {
     r.onend = () => {
       this.rec = null; this.wakeActive = false; App.dirty = true;
       const pend = this._pending; this._pending = null;
-      if (pend != null && !this.busy) { this.wakeHeard(pend); return; }
+      if (pend != null && !this.busy) { this.wakeHeard(pend, this._before); return; }
       if (!this.busy && this.wakeWanted()) this._rt = setTimeout(() => this.startWake(), this.wakeErrors > 3 ? 5000 : 250);
     };
     try { r.start(); this.rec = r; this.wakeActive = true; App.dirty = true; } catch (e) { this.rec = null; }
@@ -5050,7 +5064,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.4 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.5 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
