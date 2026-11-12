@@ -3373,13 +3373,56 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const Table = {
-  items: [],
+  items: [], lastVoice: 0, convoStart: 0,
+  touch() { const n = Date.now(); if (n - this.lastVoice > 6000) this.convoStart = n; this.lastVoice = n; },
   add(t) { t = String(t || '').trim(); if (t.split(/\s+/).length < 2) return; this.items.push({ t, ts: Date.now() }); this.items = this.items.filter(x => Date.now() - x.ts < 120000).slice(-14); },
   force: false,
   words() { return this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' ').split(/\s+/).filter(Boolean).length; },
   take() { if (!this.force && listenMode() !== 'mesa') return ''; const x = this.items.filter(i => Date.now() - i.ts < 90000).map(i => i.t).join(' '); return x.length > 900 ? x.slice(-900) : x; },
   clear() { this.items = []; },
 };
+/* ---------- Pedir la palabra: Josi escucha la charla sin interrumpir y, en una pausa, si tiene algo útil dice «un momento» y espera tu permiso ---------- */
+const Floor = {
+  lastAsk: 0, lastEval: 0, hour: [], evaluating: false, pauseEv: 0, minConvo: 35000, minWords: 35, gapAsk: 480000, gapEval: 150000,
+  enabled() { return S.floor !== false && listenMode() !== 'normal' && !Live.on; },
+  async tick() {
+    if (!this.enabled() || !S.aiKey || !Talk.rec || Talk.busy || Voice.speaking || SR_ACTIVE || App.prompt || !Josi.on || !App.connected || this.evaluating) return;
+    if (performance.now() < (App.aiCoolUntil || 0)) return;
+    const n = Date.now(), quiet = n - Table.lastVoice;
+    if (!Table.lastVoice || quiet < 2000 || quiet > 6000) return;            // justo acaba de hacerse una pausa
+    if (this.pauseEv === Table.lastVoice) return; this.pauseEv = Table.lastVoice; // una sola revisión por pausa
+    if (Table.lastVoice - Table.convoStart < this.minConvo || Table.words() < this.minWords) return;
+    if (n - this.lastAsk < this.gapAsk || n - this.lastEval < this.gapEval) return;
+    this.hour = this.hour.filter(t => n - t < 3600000); if (this.hour.length >= 6) return;
+    const d = App.lastD; if (d && Math.abs(d.a || 0) > 0.8) return; if (Mood.heavy()) return;
+    this.lastEval = n; this.evaluating = true;
+    try {
+      const idea = await this.evaluate(); if (!idea) return;
+      if (Date.now() - Table.lastVoice < 2200 || Talk.busy || Voice.speaking) return; // retomaron la charla: no interrumpo
+      await this.ask();
+    } catch (e) { logLine('!', 'Pedir la palabra: ' + e.message); } finally { this.evaluating = false; }
+  },
+  async evaluate() {
+    Table.force = true; const txt = Table.take(); Table.force = false; if (!txt) return false; Usage.req();
+    const sys = `Eres ${botName()}, el copiloto y compañero de la familia de ${S.userName || 'Edwin'}. Lees lo que se estaba hablando en el auto. Decide si vale la pena pedir la palabra: solo si puedes aportar algo realmente útil, sabio, cálido o gracioso para ese momento (un consejo, una opinión que se nota que falta, un dato del camino, una broma oportuna). Si es algo privado o delicado entre ellos, si no aportarías nada, o si la charla fluye sola, no pidas la palabra. Responde SOLO JSON: {"habla":true|false}`;
+    const body = { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: 'Charla reciente: «' + txt + '»' }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json', maxOutputTokens: 40 } };
+    const r = await geminiCall((S.aiModel || 'gemini-flash-lite-latest').trim(), JSON.stringify(body), 9000); if (!r.ok) return false;
+    try { return JSON.parse(r.j.candidates[0].content.parts.map(x => x.text || '').join('')).habla === true; } catch (e) { return false; }
+  },
+  async ask() {
+    this.lastAsk = Date.now(); this.hour.push(this.lastAsk); Talk.busy = true;
+    try {
+      await Talk.stopWakeAsync();
+      await speakAwait(pick([`Perdón que interrumpa, un momento… ¿puedo opinar?`, `Un momento, ${S.userName || 'Edwin'}, ¿puedo decir algo?`, `Un momento antes de que sigan… ¿puedo meter mi cuchara?`]));
+      Talk.beep(); const ans = await listen(6000, true, true, { fast: true, max: 8000 });
+      if (ans && /\b(si|sí|dime|dale|adelante|claro|habla|opina|di|cuenta|cuéntame|a ver|por favor|ok)\b/i.test(ans) && !/\b(no|luego|despu[eé]s|ahorita no|espera|ahora no)\b/i.test(ans)) {
+        Table.force = true; try { await Talk.answer('Dame tu opinión sobre lo que estábamos hablando.'); } finally { Table.force = false; Table.clear(); }
+      } else if (ans) { this.lastAsk += 600000; await speakAwait(pick(['Está bien, me guardo la opinión.', 'Ok, sigan, sigan.'])); }
+    } finally { Talk.busy = false; Talk.resumeWake(); }
+  },
+};
+setInterval(() => Floor.tick(), 1000);
+
 const Talk = {
   busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
   beep() {
@@ -3459,6 +3502,7 @@ const Talk = {
     r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = true;
     r.continuous = true; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0;
     r.onresult = e => {
+      if (Voice.speaking) return; Table.touch();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen (solo modo mesa)
@@ -5064,7 +5108,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.5 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.6 · 12 nov</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5075,6 +5119,7 @@ function viewSettings() {
     <div class="f"><span>Tu nombre <span class="d">Josi te saluda por tu nombre</span></span><input type="text" id="sName" maxlength="24" value="${esc(S.userName || '')}"></div>
     <div class="f"><span>Lugares cercanos <span class="d">Josi te avisa de restaurantes, cafés y heladerías que pasas y te pregunta si quieres que te cuente (necesita internet)</span></span><input type="checkbox" id="sPoi" ${S.poi !== false ? 'checked' : ''}></div>
     <div class="f"><span>Escucha de conversaciones <span class="d">Cuánto espera Josi antes de darte por terminado. Normal: frases cortas. Larga: hasta 30 s. Mesa: hasta 60 s con varias personas; recuerda lo último que se habló para responder con contexto cuando lo llamas (solo en memoria)</span></span><select id="sListen"><option value="normal" ${listenMode() === 'normal' ? 'selected' : ''}>Normal</option><option value="larga" ${listenMode() === 'larga' ? 'selected' : ''}>Larga (30 s)</option><option value="mesa" ${listenMode() === 'mesa' ? 'selected' : ''}>Mesa (60 s)</option></select></div>
+    <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
     <div class="f" style="display:block">${voiceBox()}</div>
@@ -5202,6 +5247,7 @@ function bindSettings() {
   $('#sMicTest').onclick = async () => { Talk.beep(); const q = await listen(6000, true); if (q) toast('Escuché: «' + q + '»'); else toast((App.micMsg && App.micMsg.text) || 'No te escuché'); };
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
+  $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
   $('#sTalkTest').onclick = () => {
     openModal(`<h2>Prueba de conversación</h2><p class="muted" id="ttInfo">Toca «Empezar» y conversen con naturalidad, con pausas normales. Josi solo escucha y escribe lo que entiende; no responde. Termina cuando haya un silencio largo o a los ${LISTEN_MAX[listenMode()] / 1000} s.</p><div id="ttBox" style="min-height:110px;max-height:220px;overflow:auto;background:var(--s2);border-radius:12px;padding:10px;margin:8px 0;white-space:pre-wrap"></div>
       <div class="actions"><button class="btn" id="ttNo">Cerrar</button><button class="btn primary" id="ttGo">Empezar</button></div>`);
