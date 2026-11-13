@@ -72,7 +72,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.JOSI_KEY_PASSWORD || 'josi-sideload' }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          set +e
+          ./gradlew assembleRelease --no-daemon --stacktrace > /tmp/build.log 2>&1
+          RC=$?
+          if [ $RC -ne 0 ]; then
+            grep -E "error:|What went wrong|Caused by|FAILED|Could not|not found|Execution failed" -A3 /tmp/build.log | head -40 | sed 's/^/::error::/' | tr '\n' ' ' | sed 's/::error::/\n::error::/g'
+            echo
+            exit $RC
+          fi
+          set -e
           cp app/build/outputs/apk/release/app-release.apk ../../josi.apk
 
       - name: Publicar en Releases
