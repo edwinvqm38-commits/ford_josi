@@ -3415,6 +3415,10 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
+const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
+const APP_VER = '3.13 · 13 nov';
+// avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
+setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
   items: [], lastVoice: 0, convoStart: 0,
   touch() { const n = Date.now(); if (n - this.lastVoice > 6000) this.convoStart = n; this.lastVoice = n; },
@@ -3578,7 +3582,7 @@ const Talk = {
       rest = (rest || '').trim();
       const nw = t => t.split(/\s+/).filter(Boolean).length;
       // «Josi, ¿estás?», «hola», «¿me escuchas?»: solo comprueban que estés ahí; no son una pregunta sobre la charla
-      const presence = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i.test(rest);
+      const presence = PRESENCE_RE.test(rest);
       if (presence) rest = '';
       // varias voces a la vez: lo que se entendió es dudoso; mejor pedir que lo repitan que adivinar
       if (low && !presence && nw(rest) >= 3) {
@@ -3621,6 +3625,7 @@ const Talk = {
     r.onresult = e => {
       if (Voice.speaking) return; Table.touch();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
+      App.wakeSeen = { t: parts.join(' ').trim(), ts: Date.now() }; App.dirty = true;
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (Overlap.low(e.results[i])) { if (wi < 0 || i < wi) Overlap.note(); } else if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
@@ -3629,7 +3634,7 @@ const Talk = {
       this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest; this._low = Overlap.low(e.results[wi]);
       clearTimeout(this._gapT);
       if (e.results[e.results.length - 1].isFinal) { go(); return; }
-      this._gapT = setTimeout(go, rest.split(/\s+/).filter(Boolean).length < 2 ? 1200 : 1700); // por si el final tarda en llegar
+      this._gapT = setTimeout(go, PRESENCE_RE.test(rest) ? 650 : rest.split(/\s+/).filter(Boolean).length < 2 ? 1200 : 1700); // por si el final tarda en llegar
     };
     r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); micNote(SR_ERR[e.error], 9000); }
@@ -4711,6 +4716,8 @@ function renderLiveValues() {
     if (App.alert && nowT < App.alert.until) c = { tone: 'warn', icon: '!', text: App.alert.text };
     else if (App.listening) c = { tone: 'good', icon: '🎙', text: 'Te escucho…' + (App.heardLive ? ' «' + App.heardLive + '»' : '') };
     else if (App.micMsg && nowT < App.micMsg.until) c = { tone: 'info', icon: 'J', text: App.micMsg.text };
+    else if (App.wakeSeen && Date.now() - App.wakeSeen.ts < 4500 && App.wakeSeen.t && S.showHeard !== false) c = { tone: 'info', icon: '👂', text: 'Oí: «' + App.wakeSeen.t.slice(-90) + '»' };
+    else if (Voice.speaking && Talk.wakeWanted()) c = { tone: 'info', icon: 'J', text: 'Josi está hablando: espera a que termine para hablarle.' };
     else if (App.thinking) c = { tone: 'info', icon: 'J', text: 'Josi está pensando…' };
     else if (App.josiSays && nowT < App.josiSays.until) c = { tone: 'info', icon: 'J', text: 'Josi: ' + App.josiSays.text };
     else if (App.needTap) c = { tone: 'info', icon: 'J', text: 'Toca la pantalla para escuchar a Josi.' };
@@ -5225,7 +5232,7 @@ function viewSettings() {
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
-    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>3.12 · 12 nov</b></div>
+    <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>${APP_VER}</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5239,6 +5246,7 @@ function viewSettings() {
     <div class="f"><span>Sensibilidad del micrófono <span class="d">Para voces bajas en voz en vivo. El reconocimiento normal usa el micrófono del celular tal cual: acerca el teléfono o habla cerca si hablas bajito</span></span><select id="sGain"><option value="1" ${(+S.micGain || 1) === 1 ? 'selected' : ''}>Normal</option><option value="2" ${+S.micGain === 2 ? 'selected' : ''}>Alta</option><option value="3.5" ${+S.micGain === 3.5 ? 'selected' : ''}>Muy alta</option></select></div>
     <div class="f"><span>Modelo inteligente automático <span class="d">Usa un modelo más capaz para opiniones, consejos y charlas largas, y el rápido para órdenes simples. Gasta más de tu cuota gratuita en las charlas profundas</span></span><input type="checkbox" id="sSmart" ${S.aiSmart !== false ? 'checked' : ''}></div>
     <div class="f"><span>Avisos de manejo en modo Solo GPS <span class="d">Josi comenta frenadas y arrancadas fuertes, velocidad y manejo suave. Apágalo si el GPS del celular no te parece preciso; el recorrido se sigue grabando</span></span><input type="checkbox" id="sGpsCoach" ${S.gpsCoach !== false ? 'checked' : ''}></div>
+    <div class="f"><span>Mostrar lo que oye Josi <span class="d">Muestra en pantalla, unos segundos, el texto que entendió. Sirve para saber si te oyó y qué entendió</span></span><input type="checkbox" id="sHeard" ${S.showHeard !== false ? 'checked' : ''}></div>
     <div class="f"><span>Avisar cuando hablan a la vez <span class="d">Si varias personas hablan juntas, Josi lo nota, no toma ese texto como contexto y pide hablar de uno en uno (como mucho cada 15 minutos)</span></span><input type="checkbox" id="sOverlap" ${S.overlap !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
@@ -5369,6 +5377,7 @@ function bindSettings() {
   $('#sPoi').onchange = e => { S.poi = e.target.checked; saveSettings(); };
   $('#sListen').onchange = e => { S.listenMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); toast('Escucha: ' + e.target.selectedOptions[0].text); };
   $('#sGpsCoach').onchange = e => { S.gpsCoach = e.target.checked; saveSettings(); if (!e.target.checked) Josi.queue = null; };
+  $('#sHeard').onchange = e => { S.showHeard = e.target.checked; saveSettings(); };
   $('#sOverlap').onchange = e => { S.overlap = e.target.checked; saveSettings(); };
   $('#sSmart').onchange = e => { S.aiSmart = e.target.checked; saveSettings(); };
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
