@@ -2476,6 +2476,37 @@ function turnGap(txt, opts = {}) {
   if (mode === 'mesa') g = Math.max(g, 3500); else if (mode === 'normal') g = Math.min(g, 1800);
   return g;
 }
+/* ---------- Puente al APK: voz nativa sin conexión (Vosk) con la misma interfaz que Chrome ---------- */
+const NATIVE = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+if (NATIVE) (() => {
+  const P = Capacitor.Plugins && Capacitor.Plugins.JosiVoice; if (!P) return;
+  let cur = null, svc = null, finals = [], interim = '';
+  const mk = (t, f) => { const a = [{ transcript: t, confidence: f ? 0.9 : 0.5 }]; a.isFinal = f; return a; };
+  const fire = () => { if (!cur || !cur.onresult) return; const results = finals.map(t => mk(t, true)); if (interim) results.push(mk(interim, false)); try { cur.onresult({ results, resultIndex: 0 }); } catch (e) { console.error(e); } };
+  const end = (r, err) => { if (!r || cur !== r) return; cur = null; if (err && r.onerror) try { r.onerror({ error: err }); } catch (_) {} setTimeout(() => { if (r.onend) try { r.onend(); } catch (_) {} }, 0); };
+  P.addListener('text', ev => {
+    if (!cur) return;
+    if (ev.kind === 'partial') interim = ev.text; else { finals.push(ev.text); interim = ''; }
+    fire(); if (ev.kind === 'final' && !cur.continuous) end(cur);
+  });
+  P.addListener('state', ev => { App && (App.nativeState = ev.state); if (ev.state === 'error' && cur) end(cur, 'audio-capture'); });
+  class NativeSR {
+    constructor() { this.lang = 'es'; this.continuous = false; this.interimResults = true; this.maxAlternatives = 1; }
+    start() {
+      if (cur && cur !== this) throw new Error('InvalidStateError');
+      cur = this; finals = []; interim = '';
+      if (this.onstart) try { this.onstart(); } catch (_) {}
+      if (!svc) svc = P.start().catch(e => { svc = null; end(this, 'not-allowed'); });
+    }
+    stop() { end(this); }
+    abort() { end(this); }
+  }
+  window.SpeechRecognition = window.webkitSpeechRecognition = NativeSR;
+  let duck = false;
+  setInterval(() => { try { const s = !!(typeof Voice !== 'undefined' && Voice.speaking); if (s !== duck) { duck = s; P.duck({ on: s }); } } catch (_) {} }, 350);
+  document.title = 'Josi';
+})();
+
 async function listen(ms = 6000, force = false, quiet = false, opts = {}) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { if (!quiet) micNote('Este navegador no reconoce voz. Usa Google Chrome.'); return null; }
@@ -3416,7 +3447,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '3.13 · 13 nov';
+const APP_VER = '3.14 · 13 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
