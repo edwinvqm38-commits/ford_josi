@@ -1,0 +1,7 @@
+{
+  "appId": "app.josi.copilot",
+  "appName": "Josi",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "server": { "androidScheme": "https" }
+}
