@@ -3215,11 +3215,14 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   if (deepQ) logLine('i', 'Pensando a fondo con un modelo más capaz');
   const models = [...new Set([deepQ ? 'gemini-flash-latest' : baseM, baseM, 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
+  // respuestas normales sin «pensar» largo (mucho más rápido); las profundas sí piensan. Si el modelo no admite el ajuste, se vuelve al envío normal.
+  const bodyFast = JSON.stringify({ ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { thinkingBudget: 0 } } });
   const tryModel = async (m, ms) => {
     const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms); Lat.ai(m);
     try {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: bodyTxt });
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: (deepQ || App.noThink) ? bodyTxt : bodyFast });
       let j = null; try { j = await r.json(); } catch (e) {}
+      if (r.status === 400 && !deepQ && !App.noThink && /think/i.test(JSON.stringify(j || {}))) { App.noThink = true; logLine('i', 'Este modelo no admite respuesta rápida; uso el modo normal'); clearTimeout(to); Lat.aiEnd(); return tryModel(m, ms); }
       return { ok: r.ok, status: r.status, j };
     } catch (e) { return { ok: false, status: 0, net: true, msg: e.name === 'AbortError' ? 'tardó demasiado' : (e.message || 'sin conexión') }; }
     finally { clearTimeout(to); Lat.aiEnd(); }
@@ -3526,7 +3529,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '3.17 · 13 nov';
+const APP_VER = '3.18 · 13 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
