@@ -2476,6 +2476,51 @@ function turnGap(txt, opts = {}) {
   if (mode === 'mesa') g = Math.max(g, 3500); else if (mode === 'normal') g = Math.min(g, 1800);
   return g;
 }
+/* ---------- Tiempos de voz (diagnóstico): mide cada paso, no cambia el comportamiento ---------- */
+const LATKEY = 'josi.lat.v1';
+const Lat = {
+  cur: null, log: (() => { try { return JSON.parse(localStorage.getItem(LATKEY)) || []; } catch (e) { return []; } })(),
+  begin(kind, t0) { this.cur = { kind, voz: t0 || performance.now(), ts: Date.now() }; },
+  mark(k, extra) { const c = this.cur; if (!c) return; if (performance.now() - c.voz > 120000) { this.cur = null; return; } c[k] = performance.now(); if (extra) Object.assign(c, extra); },
+  first(k, extra) { if (this.cur && !this.cur[k]) this.mark(k, extra); },
+  ai(m) { const c = this.cur; if (!c || !c.texto) return; this.first('ia0'); c.modelo = m; c.iaN = (c.iaN || 0) + 1; },
+  aiEnd() { if (this.cur && this.cur.ia0) this.mark('ia1'); },
+  spoke(mode) {
+    const c = this.cur; if (!c || !c.texto) return; this.cur = null;
+    const now = performance.now(), d = (a, b) => (a && b ? Math.max(0, Math.round(b - a)) : null);
+    const e = { ts: c.ts, tipo: c.kind, motor: typeof NATIVE !== 'undefined' && NATIVE ? 'apk' : 'chrome', voz: mode, txt: (c.txt || '').slice(0, 60), pal: (c.txt || '').split(/\s+/).filter(Boolean).length,
+      oir: d(c.voz, c.josi || c.texto), frase: d(c.josi || c.voz, c.texto), cierre: d(c.silencio, c.texto), pre: d(c.texto, c.ia0), ia: d(c.ia0, c.ia1), iaN: c.iaN || 0, modelo: c.modelo || '',
+      hablar: d(c.ia1 || c.texto, now), resp: d(c.texto, now), total: d(c.voz, now), fin: c.why || '' };
+    this.log.push(e); if (this.log.length > 40) this.log.splice(0, this.log.length - 40);
+    try { localStorage.setItem(LATKEY, JSON.stringify(this.log)); } catch (_) {}
+    logLine('i', `Tiempos: respuesta ${e.resp} ms (IA ${e.ia ?? '—'} ms, total ${e.total} ms)`);
+  },
+  clear() { this.log = []; this.cur = null; try { localStorage.removeItem(LATKEY); } catch (_) {} },
+  avg(rows, k) { const v = rows.map(r => r[k]).filter(x => x != null).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; },
+  text() {
+    const L = this.log, f = x => (x == null ? '—' : x);
+    return `Josi ${APP_VER} · ${typeof NATIVE !== 'undefined' && NATIVE ? 'APK' : 'Chrome'} · ${navigator.userAgent.replace(/^.*?\((.*?)\).*$/, '$1')}\n` +
+      'hora | tipo | motor | palabras | oír→Josi | frase | cierre | antes IA | IA (n, modelo) | hablar | RESPUESTA | total | fin\n' +
+      L.map(e => `${new Date(e.ts).toLocaleTimeString('es', { hour12: false })} | ${e.tipo} | ${e.motor}/${e.voz} | ${e.pal} | ${f(e.oir)} | ${f(e.frase)} | ${f(e.cierre)} | ${f(e.pre)} | ${f(e.ia)} (${e.iaN}, ${e.modelo.replace('gemini-', '')}) | ${f(e.hablar)} | ${f(e.resp)} | ${f(e.total)} | ${e.fin}`).join('\n');
+  },
+  show() {
+    const L = this.log.slice().reverse(), s = x => (x == null ? '—' : (x / 1000).toFixed(1) + ' s');
+    const short = L.filter(e => !e.iaN), long = L.filter(e => e.iaN);
+    const col = (x, lim) => (x == null ? '' : x <= lim ? 'color:var(--ok,#4ade80)' : x <= lim * 2 ? 'color:var(--warn,#fbbf24)' : 'color:var(--bad,#f87171)');
+    const row = e => `<tr><td>${new Date(e.ts).toLocaleTimeString('es', { hour12: false })}</td><td style="text-align:left">${e.tipo === 'llamada' ? '«Josi…»' : 'Turno'}${e.txt ? ' · ' + esc(e.txt.slice(0, 28)) : ''}</td><td>${s(e.frase)}</td><td>${e.iaN ? s(e.ia) : '—'}</td><td>${s(e.hablar)}</td><td style="font-weight:700;${col(e.resp, e.iaN ? 3000 : 1500)}">${s(e.resp)}</td></tr>`;
+    openModal(`<h2>Tiempos de voz</h2>
+      <p class="muted">Cuánto tarda Josi desde que terminas de hablar hasta que empieza a responder. Meta: saludo corto en menos de 1,5 s; pregunta con IA en menos de 3 s.</p>
+      <div style="display:flex;gap:10px;margin:8px 0"><div style="flex:1;background:var(--s2);border-radius:12px;padding:10px"><div class="muted" style="font-size:12px">Saludo corto (mediana)</div><div style="font-size:22px;font-weight:700;${col(this.avg(short, 'resp'), 1500)}">${s(this.avg(short, 'resp'))}</div><div class="muted" style="font-size:12px">${short.length} mediciones</div></div>
+      <div style="flex:1;background:var(--s2);border-radius:12px;padding:10px"><div class="muted" style="font-size:12px">Pregunta con IA (mediana)</div><div style="font-size:22px;font-weight:700;${col(this.avg(long, 'resp'), 3000)}">${s(this.avg(long, 'resp'))}</div><div class="muted" style="font-size:12px">${long.length} mediciones · IA sola ${s(this.avg(long, 'ia'))}</div></div></div>
+      <div style="max-height:260px;overflow:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse;text-align:right"><thead><tr class="muted"><th>Hora</th><th style="text-align:left">Qué</th><th>Frase</th><th>IA</th><th>Voz</th><th>Respuesta</th></tr></thead><tbody>${L.map(row).join('') || '<tr><td colspan="6" style="text-align:center;padding:14px" class="muted">Aún no hay mediciones. Habla con Josi y vuelve aquí.</td></tr>'}</tbody></table></div>
+      <p class="muted" style="font-size:12px">Frase: desde «Josi» hasta que se entendió todo. IA: espera a Gemini. Voz: hasta que empieza a sonar. Respuesta: fin de tu frase → Josi suena.</p>
+      <div class="actions"><button class="btn" id="ltClr">Borrar</button><button class="btn" id="ltCopy">Copiar para enviar</button><button class="btn primary" id="ltNo">Cerrar</button></div>`, true);
+    $('#ltNo').onclick = closeModal;
+    $('#ltClr').onclick = () => { this.clear(); this.show(); };
+    $('#ltCopy').onclick = async () => { const t = this.text(); try { await navigator.clipboard.writeText(t); toast('Copiado. Pégalo en el chat.'); } catch (e) { openModal(`<h2>Copia este texto</h2><textarea style="width:100%;height:240px;font-size:11px">${esc(t)}</textarea><div class="actions"><button class="btn primary" onclick="closeModal()">Cerrar</button></div>`, true); } };
+  },
+};
+
 /* ---------- Puente al APK: voz nativa sin conexión (Vosk) con la misma interfaz que Chrome ---------- */
 const NATIVE = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 if (NATIVE) (() => {
@@ -2524,15 +2569,16 @@ async function listen(ms = 6000, force = false, quiet = false, opts = {}) {
       listen.last = { text: v || '', words: v ? v.split(/\s+/).filter(Boolean).length : 0, secs: +((performance.now() - (tFirst || t0)) / 1000).toFixed(1), why };
       if (!v && !quiet) micNote(err ? (SR_ERR[err] || 'Error de micrófono: ' + err) : 'No te escuché. Toca 🎙 y habla después del tono.');
       if (v) logLine('i', 'Escuché: ' + v);
+      if (v && !quiet) Lat.mark('texto', { txt: (Lat.cur && Lat.cur.kind === 'llamada' && Lat.cur.txt ? Lat.cur.txt + ' ' : '') + v, why }); else if (!v && Lat.cur && Lat.cur.kind === 'turno') Lat.cur = null;
       res(v);
     };
-    const stopNow = w => { why = w; try { r.stop(); } catch (_) {} setTimeout(() => { try { r.abort(); } catch (_) {} fin(last.trim() || null); }, 1500); };
+    const stopNow = w => { why = w; Lat.mark('silencio'); try { r.stop(); } catch (_) {} setTimeout(() => { try { r.abort(); } catch (_) {} fin(last.trim() || null); }, 1500); };
     r.onresult = e => {
       let interim = '';
       for (let i = 0; i < e.results.length; i++) { const x = e.results[i]; if (x.isFinal) finals[i] = x[0].transcript.trim(); else interim = x[0].transcript.trim(); }
       const fx = Object.keys(finals).sort((a, b) => a - b).map(k => finals[k]).filter(Boolean); if (interim && fx[fx.length - 1] !== interim) fx.push(interim);
       last = fx.join(' ').replace(/\s+/g, ' '); App.heardLive = last; App.dirty = true;
-      if (!tFirst) { tFirst = performance.now(); clearTimeout(startT); maxT = setTimeout(() => stopNow('tope'), maxTurn); }
+      if (!tFirst) { tFirst = performance.now(); if (!quiet && !Lat.cur) Lat.begin('turno', tFirst); clearTimeout(startT); maxT = setTimeout(() => stopNow('tope'), maxTurn); }
       clearTimeout(gapT); gapT = setTimeout(() => stopNow('silencio'), turnGap(last, opts));
     };
     r.onerror = e => { err = e.error; logLine('!', 'Micrófono: ' + e.error); };
@@ -2616,7 +2662,7 @@ const Voice = {
       const blocked = () => { Josi.pending = text; App.needTap = true; App.dirty = true; };
       // si Chrome no deja hablar (sin toque previo, o el celular está dando el audio a la radio), no se queda mudo: pide un toque
       const wd = setTimeout(() => { if (!started && !done) { try { speechSynthesis.cancel(); } catch (e) {} this.speaking = false; blocked(); fin(); } }, 3500);
-      u.onstart = () => { started = true; this.speaking = true; this.mode = 'tablet'; this.level = 0.6; };
+      u.onstart = () => { started = true; this.speaking = true; this.mode = 'tablet'; this.level = 0.6; Lat.spoke('tablet'); };
       u.onboundary = () => { this.level = 0.75 + Math.random() * 0.25; };
       u.onend = () => { this.speaking = false; fin(); };
       u.onerror = e => {
@@ -2636,7 +2682,7 @@ const Voice = {
         const src = this.ctx.createMediaElementSource(a); this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 512;
         this.buf = new Uint8Array(this.analyser.fftSize); src.connect(this.analyser); this.out = this.ctx.createGain(); this.out.gain.value = this.soft ? 0.28 : 1; this.analyser.connect(this.out); this.out.connect(this.ctx.destination);
       } catch (e) { this.analyser = null; }
-      a.onplay = () => { this.speaking = true; this.mode = 'azure'; };
+      a.onplay = () => { this.speaking = true; this.mode = 'azure'; Lat.spoke('azure'); };
       a.onended = () => { this.speaking = false; URL.revokeObjectURL(a.src); h.onend && h.onend(); };
       a.play().catch(err => { this.speaking = false; if (err.name === 'NotAllowedError') { Josi.pending = text; App.needTap = true; App.dirty = true; h.onend && h.onend(); } else tablet(); });
     }).catch(err => { this.azFails++; logLine('!', 'Voz Azure: ' + err.message + ' → uso la voz de la tablet'); tablet(); });
@@ -3137,13 +3183,13 @@ Responde SOLO con JSON: {"say":"lo que dices en voz alta","action":"ninguna","en
   const models = [...new Set([deepQ ? 'gemini-flash-latest' : baseM, baseM, 'gemini-flash-lite-latest', 'gemini-flash-latest'])];
   const bodyTxt = JSON.stringify(body);
   const tryModel = async (m, ms) => {
-    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms);
+    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms); Lat.ai(m);
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: bodyTxt });
       let j = null; try { j = await r.json(); } catch (e) {}
       return { ok: r.ok, status: r.status, j };
     } catch (e) { return { ok: false, status: 0, net: true, msg: e.name === 'AbortError' ? 'tardó demasiado' : (e.message || 'sin conexión') }; }
-    finally { clearTimeout(to); }
+    finally { clearTimeout(to); Lat.aiEnd(); }
   };
   let res = null;
   for (let i = 0; i < models.length; i++) {
@@ -3199,13 +3245,13 @@ async function askWeb(q) {
   return txt;
 }
 async function geminiCall(m, bodyTxt, ms) {
-  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms);
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms); Lat.ai(m);
   try {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey.trim() }, body: bodyTxt });
     let j = null; try { j = await r.json(); } catch (e) {}
     return { ok: r.ok, status: r.status, j };
   } catch (e) { return { ok: false, status: 0, msg: e.name === 'AbortError' ? 'tardó demasiado' : (e.message || 'sin conexión') }; }
-  finally { clearTimeout(to); }
+  finally { clearTimeout(to); Lat.aiEnd(); }
 }
 function aiErrSpeech() {
   const e = App.aiErr; if (!e) return 'No pude responder eso. Inténtalo otra vez.';
@@ -3447,7 +3493,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '3.14 · 13 nov';
+const APP_VER = '3.15 · 13 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
@@ -3608,7 +3654,7 @@ const Talk = {
     finally { this.busy = false; this.resumeWake(); }
   },
   async wakeHeard(rest, before, low) {
-    if (this.busy) return; this.busy = true;
+    if (this.busy) return; this.busy = true; Lat.mark('texto', { txt: rest || '', why: 'llamada' });
     try {
       rest = (rest || '').trim();
       const nw = t => t.split(/\s+/).filter(Boolean).length;
@@ -3645,7 +3691,7 @@ const Talk = {
     let r;
     try { r = new SRC(); } catch (e) { return; }
     r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = true;
-    r.continuous = false; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0;
+    r.continuous = false; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0; this._lt0 = 0; this._ltJ = false;
     // Chrome corta solo al terminar la frase: «Josi, ¿estás?» se contesta enseguida. Solo si la frase parece seguir se espera un poco más.
     const go = async () => {
       clearTimeout(this._gapT); clearTimeout(this._capT); let q = (this._pending || '').trim(); const bef = this._before; this._pending = null; this.stopWake();
@@ -3654,13 +3700,14 @@ const Talk = {
       this.wakeHeard(q, bef, this._low);
     };
     r.onresult = e => {
-      if (Voice.speaking) return; Table.touch();
+      if (Voice.speaking) return; Table.touch(); if (!this._lt0) this._lt0 = performance.now();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
       App.wakeSeen = { t: parts.join(' ').trim(), ts: Date.now() }; App.dirty = true;
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (Overlap.low(e.results[i])) { if (wi < 0 || i < wi) Overlap.note(); } else if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
+      if (!this._ltJ) { this._ltJ = true; Lat.begin('llamada', this._lt0); Lat.mark('josi'); }
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
       this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest; this._low = Overlap.low(e.results[wi]);
       clearTimeout(this._gapT);
@@ -5281,6 +5328,7 @@ function viewSettings() {
     <div class="f"><span>Avisar cuando hablan a la vez <span class="d">Si varias personas hablan juntas, Josi lo nota, no toma ese texto como contexto y pide hablar de uno en uno (como mucho cada 15 minutos)</span></span><input type="checkbox" id="sOverlap" ${S.overlap !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
+    <div class="f"><span>Tiempos de voz <span class="d">Mide cuánto tarda Josi en responderte, paso a paso. Sirve para encontrar dónde está la demora</span></span><button class="btn small" id="sLat">Ver</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
     <div class="f" style="display:block">${voiceBox()}</div>
     <div class="f"><span>Usar mi GPS real en simulación <span class="d">Para probar el mapa y la ruta con tu ubicación verdadera</span></span><input type="checkbox" id="sGpsReal" ${S.gpsReal !== false ? 'checked' : ''}></div>
@@ -5413,6 +5461,7 @@ function bindSettings() {
   $('#sSmart').onchange = e => { S.aiSmart = e.target.checked; saveSettings(); };
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
   $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
+  $('#sLat').onclick = () => Lat.show();
   $('#sTalkTest').onclick = () => {
     openModal(`<h2>Prueba de conversación</h2><p class="muted" id="ttInfo">Toca «Empezar» y conversen con naturalidad, con pausas normales. Josi solo escucha y escribe lo que entiende; no responde. Termina cuando haya un silencio largo o a los ${LISTEN_MAX[listenMode()] / 1000} s.</p><div id="ttBox" style="min-height:110px;max-height:220px;overflow:auto;background:var(--s2);border-radius:12px;padding:10px;margin:8px 0;white-space:pre-wrap"></div>
       <div class="actions"><button class="btn" id="ttNo">Cerrar</button><button class="btn primary" id="ttGo">Empezar</button></div>`);
