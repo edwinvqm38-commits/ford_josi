@@ -3531,7 +3531,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '3.19 · 13 nov';
+const APP_VER = '3.20 · 13 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
@@ -3644,6 +3644,7 @@ const Overlap = {
 const Talk = {
   busy: false, rec: null, wakeActive: false, wakeErrors: 0, _pending: null, _rt: null,
   beep() {
+    if (performance.now() - (this._bp || 0) < 1800) return; this._bp = performance.now();
     try {
       const c = Voice.ctx || (Voice.ctx = new (window.AudioContext || window.webkitAudioContext)()); c.resume && c.resume();
       const t = c.currentTime;
@@ -3746,7 +3747,7 @@ const Talk = {
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (Overlap.low(e.results[i])) { if (wi < 0 || i < wi) Overlap.note(); } else if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
-      if (!this._ltJ) { this._ltJ = true; Lat.begin('llamada', this._lt0); Lat.mark('josi'); Diag.add('«Josi»', 'palabra detectada'); }
+      if (!this._ltJ) { this._ltJ = true; Lat.begin('llamada', this._lt0); Lat.mark('josi'); Diag.add('«Josi»', 'palabra detectada'); if (!this.busy && !Voice.speaking) this.beep(); }   // aviso inmediato: «te oí», sin esperar a que termines de hablar
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
       this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest; this._low = Overlap.low(e.results[wi]);
       clearTimeout(this._gapT);
