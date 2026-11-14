@@ -2265,7 +2265,7 @@ const Josi = {
     const h = { onend: null }, inner = { onend: () => { if (!Talk.busy) Talk.resumeWake(); h.onend && h.onend(); } };
     Talk.stopWake(); App.josiSays = { text, until: performance.now() + Math.max(5000, text.length * 75) }; App.dirty = true;
     try { Voice.say(text, inner); } catch (e) { return false; }
-    this.lastSpoke = performance.now(); logLine('i', 'Josi: ' + text); return h;
+    this.lastSpoke = performance.now(); logLine('i', 'Josi: ' + text); Diag.add('Josi dice', '«' + text.slice(0, 100) + '»'); return h;
   },
   // pide hablar: prioridad 'tip' (máx. 1 cada 2 min), 'praise' (máx. 1 cada 2 min), 'info' (siempre)
   ask(kind, key, text, coolMin = 6) {
@@ -2476,6 +2476,38 @@ function turnGap(txt, opts = {}) {
   if (mode === 'mesa') g = Math.max(g, 3500); else if (mode === 'normal') g = Math.min(g, 1800);
   return g;
 }
+/* ---------- Diario de escucha: anota todo lo que oye y hace Josi (solo en este dispositivo) ---------- */
+const Diag = {
+  KEY: 'josi.diag.v1', t0: performance.now(), ev: [],
+  init() { try { this.ev = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.ev = []; } },
+  add(k, x) {
+    const e = { ts: Date.now(), k, x: String(x == null ? '' : x).slice(0, 140) };
+    const l = this.ev[this.ev.length - 1];
+    if (l && l.k === k && k === 'oye~' && e.ts - l.ts < 4000) { l.x = e.x; l.ts2 = e.ts; } else this.ev.push(e);   // el texto provisional se va reemplazando
+    if (this.ev.length > 500) this.ev.splice(0, this.ev.length - 500);
+    clearTimeout(this._sv); this._sv = setTimeout(() => { try { localStorage.setItem(this.KEY, JSON.stringify(this.ev.slice(-250))); } catch (_) {} }, 1500);
+  },
+  clear() { this.ev = []; try { localStorage.removeItem(this.KEY); } catch (_) {} },
+  why() {
+    if (!S.wake) return 'la palabra «Josi» está desactivada en Ajustes';
+    if (!SRC) return 'este navegador no reconoce voz (usa Chrome)';
+    if (!App.connected) return 'no hay conexión: abre la simulación, el OBD2 o el modo Solo GPS';
+    if (!featureAllowed('microphone')) return 'la vista bloquea el micrófono';
+    if (!Josi.on) return 'Josi está en silencio (actívala)';
+    if (Live.on) return 'el modo Live usa el micrófono';
+    if (Talk.rec) return 'escuchando «Josi» ahora';
+    if (Talk.busy) return 'procesando una frase';
+    if (Voice.speaking) return 'Josi está hablando';
+    return 'en pausa un instante (reiniciando la escucha)';
+  },
+  text(n = 160) {
+    const L = this.ev.slice(-n), t0 = L.length ? L[0].ts : 0;
+    return `Josi ${APP_VER} · ${typeof NATIVE !== 'undefined' && NATIVE ? 'APK' : 'Chrome'} · modo ${S.wakeMode === 'frases' ? 'frases' : 'continuo'} · ${navigator.userAgent.replace(/^.*?\((.*?)\).*$/, '$1')}\nEstado: ${this.why()}\n` +
+      L.map(e => `+${((e.ts - t0) / 1000).toFixed(1)}s ${e.k} ${e.x}`).join('\n');
+  },
+};
+Diag.init();
+
 /* ---------- Tiempos de voz (diagnóstico): mide cada paso, no cambia el comportamiento ---------- */
 const LATKEY = 'josi.lat.v1';
 const Lat = {
@@ -2507,17 +2539,18 @@ const Lat = {
     const L = this.log.slice().reverse(), s = x => (x == null ? '—' : (x / 1000).toFixed(1) + ' s');
     const short = L.filter(e => !e.iaN), long = L.filter(e => e.iaN);
     const col = (x, lim) => (x == null ? '' : x <= lim ? 'color:var(--ok,#4ade80)' : x <= lim * 2 ? 'color:var(--warn,#fbbf24)' : 'color:var(--bad,#f87171)');
-    const row = e => `<tr><td>${new Date(e.ts).toLocaleTimeString('es', { hour12: false })}</td><td style="text-align:left">${e.tipo === 'llamada' ? '«Josi…»' : 'Turno'}${e.txt ? ' · ' + esc(e.txt.slice(0, 28)) : ''}</td><td>${s(e.frase)}</td><td>${e.iaN ? s(e.ia) : '—'}</td><td>${s(e.hablar)}</td><td style="font-weight:700;${col(e.resp, e.iaN ? 3000 : 1500)}">${s(e.resp)}</td></tr>`;
-    openModal(`<h2>Tiempos de voz</h2>
-      <p class="muted">Cuánto tarda Josi desde que terminas de hablar hasta que empieza a responder. Meta: saludo corto en menos de 1,5 s; pregunta con IA en menos de 3 s.</p>
-      <div style="display:flex;gap:10px;margin:8px 0"><div style="flex:1;background:var(--s2);border-radius:12px;padding:10px"><div class="muted" style="font-size:12px">Saludo corto (mediana)</div><div style="font-size:22px;font-weight:700;${col(this.avg(short, 'resp'), 1500)}">${s(this.avg(short, 'resp'))}</div><div class="muted" style="font-size:12px">${short.length} mediciones</div></div>
-      <div style="flex:1;background:var(--s2);border-radius:12px;padding:10px"><div class="muted" style="font-size:12px">Pregunta con IA (mediana)</div><div style="font-size:22px;font-weight:700;${col(this.avg(long, 'resp'), 3000)}">${s(this.avg(long, 'resp'))}</div><div class="muted" style="font-size:12px">${long.length} mediciones · IA sola ${s(this.avg(long, 'ia'))}</div></div></div>
-      <div style="max-height:260px;overflow:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse;text-align:right"><thead><tr class="muted"><th>Hora</th><th style="text-align:left">Qué</th><th>Frase</th><th>IA</th><th>Voz</th><th>Respuesta</th></tr></thead><tbody>${L.map(row).join('') || '<tr><td colspan="6" style="text-align:center;padding:14px" class="muted">Aún no hay mediciones. Habla con Josi y vuelve aquí.</td></tr>'}</tbody></table></div>
-      <p class="muted" style="font-size:12px">Frase: desde «Josi» hasta que se entendió todo. IA: espera a Gemini. Voz: hasta que empieza a sonar. Respuesta: fin de tu frase → Josi suena.</p>
-      <div class="actions"><button class="btn" id="ltClr">Borrar</button><button class="btn" id="ltCopy">Copiar para enviar</button><button class="btn primary" id="ltNo">Cerrar</button></div>`, true);
-    $('#ltNo').onclick = closeModal;
-    $('#ltClr').onclick = () => { this.clear(); this.show(); };
-    $('#ltCopy').onclick = async () => { const t = this.text(); try { await navigator.clipboard.writeText(t); toast('Copiado. Pégalo en el chat.'); } catch (e) { openModal(`<h2>Copia este texto</h2><textarea style="width:100%;height:240px;font-size:11px">${esc(t)}</textarea><div class="actions"><button class="btn primary" onclick="closeModal()">Cerrar</button></div>`, true); } };
+    const dia = Diag.ev.slice(-14).reverse().map(e => `<div style="display:flex;gap:8px;padding:2px 0"><span class="muted" style="min-width:54px">${new Date(e.ts).toLocaleTimeString('es', { hour12: false })}</span><b style="min-width:62px">${esc(e.k)}</b><span style="word-break:break-word">${esc(e.x)}</span></div>`).join('') || '<div class="muted" style="padding:10px;text-align:center">Aún no hay nada. Habla cerca del dispositivo y toca «Actualizar».</div>';
+    openModal(`<h2>Diagnóstico de voz</h2>
+      <div style="background:var(--s2);border-radius:12px;padding:10px;margin:6px 0 8px"><div class="muted" style="font-size:12px">Estado ahora</div><div style="font-weight:600">${esc(Diag.why())}</div></div>
+      <p class="muted" style="font-size:13px;margin:4px 0">Conversen normal con Josi un par de minutos (llamadas cortas, preguntas y charla de fondo). Luego toca <b>Copiar diario</b> y pégalo en el chat.</p>
+      <div style="max-height:200px;overflow:auto;font-size:12.5px;background:var(--s2);border-radius:12px;padding:8px 10px">${dia}</div>
+      <div style="display:flex;gap:10px;margin:10px 0"><div style="flex:1;background:var(--s2);border-radius:12px;padding:8px 10px"><div class="muted" style="font-size:12px">Saludo corto</div><div style="font-size:20px;font-weight:700;${col(this.avg(short, 'resp'), 1500)}">${s(this.avg(short, 'resp'))}</div></div>
+      <div style="flex:1;background:var(--s2);border-radius:12px;padding:8px 10px"><div class="muted" style="font-size:12px">Pregunta con IA</div><div style="font-size:20px;font-weight:700;${col(this.avg(long, 'resp'), 3000)}">${s(this.avg(long, 'resp'))}</div></div></div>
+      <p class="muted" style="font-size:11.5px">Todo se guarda solo en este dispositivo. Meta: saludo menos de 1,5 s; pregunta con IA menos de 3 s.</p>
+      <div class="actions" style="flex-wrap:wrap"><button class="btn" id="ltClr">Borrar</button><button class="btn" id="ltUp">Actualizar</button><button class="btn primary" id="ltCopy">Copiar diario</button><button class="btn" id="ltNo">Cerrar</button></div>`, true);
+    $('#ltNo').onclick = closeModal; $('#ltUp').onclick = () => this.show();
+    $('#ltClr').onclick = () => { this.clear(); Diag.clear(); this.show(); };
+    $('#ltCopy').onclick = async () => { const t = Diag.text() + '\n\n' + this.text(); try { await navigator.clipboard.writeText(t); toast('Copiado. Pégalo en el chat.'); } catch (e) { openModal(`<h2>Copia este texto</h2><textarea style="width:100%;height:260px;font-size:11px">${esc(t)}</textarea><div class="actions"><button class="btn primary" onclick="closeModal()">Cerrar</button></div>`, true); } };
   },
 };
 
@@ -2568,7 +2601,7 @@ async function listen(ms = 6000, force = false, quiet = false, opts = {}) {
       if (done) return; done = true; clearTimeout(gapT); clearTimeout(maxT); clearTimeout(startT); SR_ACTIVE = null; App.listening = false; App.heardLive = ''; App.dirty = true;
       listen.last = { text: v || '', words: v ? v.split(/\s+/).filter(Boolean).length : 0, secs: +((performance.now() - (tFirst || t0)) / 1000).toFixed(1), why };
       if (!v && !quiet) micNote(err ? (SR_ERR[err] || 'Error de micrófono: ' + err) : 'No te escuché. Toca 🎙 y habla después del tono.');
-      if (v) logLine('i', 'Escuché: ' + v);
+      if (v) logLine('i', 'Escuché: ' + v); Diag.add('turno', v ? '«' + v.slice(0, 120) + '» (' + why + ')' : 'sin texto (' + (err || why) + ')');
       if (v && !quiet) Lat.mark('texto', { txt: (Lat.cur && Lat.cur.kind === 'llamada' && Lat.cur.txt ? Lat.cur.txt + ' ' : '') + v, why }); else if (!v && Lat.cur && Lat.cur.kind === 'turno') Lat.cur = null;
       res(v);
     };
@@ -3167,7 +3200,7 @@ async function askAI(q) {
   if (!S.aiKey) return null;
   App.aiErr = null;
   if (performance.now() < (App.aiCoolUntil || 0)) { App.aiErr = { status: 429, kind: 'limite', wait: Math.ceil((App.aiCoolUntil - performance.now()) / 1000), detail: 'en pausa por el límite gratuito' }; return null; }
-  Usage.req();
+  Usage.req(); Diag.add('Gemini', 'pregunta: «' + String(q).slice(0, 90) + '»');
   const ctx = buildCtx(q);
   const sys = `Eres ${botName()}, el copiloto del auto de ${S.userName || 'Edwin'} (Ford Fusion SE 2018, 2.0 EcoBoost) y también su compañero de conversación. Eres varón, tranquilo, cálido, con humor suave y criterio propio. Hablas español latinoamericano como una persona real en una charla de carro: nada de "claro, con gusto", no repites la pregunta, no suenas a asistente ni a manual; sin listas, sin markdown, sin emojis. Puedes conversar de cualquier tema: dudas generales, consejos, cultura, ideas, cómo organizar el día, mecánica, o solo charlar.
 Lo que te llega viene de reconocimiento de voz y puede traer errores o palabras cortadas: interpreta por el contexto lo que quiso decir y responde a eso; solo si de verdad no se entiende, pídele que lo repita en una frase corta.
@@ -3493,7 +3526,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '3.15 · 13 nov';
+const APP_VER = '3.16 · 13 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
@@ -3691,23 +3724,24 @@ const Talk = {
     let r;
     try { r = new SRC(); } catch (e) { return; }
     r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-419'; r.interimResults = true;
-    r.continuous = false; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0; this._lt0 = 0; this._ltJ = false;
+    r.continuous = S.wakeMode !== 'frases'; this._gapT = null; this._capT = null; this._pushed = 0; this._wakeAt = 0; this._lt0 = 0; this._ltJ = false;
     // Chrome corta solo al terminar la frase: «Josi, ¿estás?» se contesta enseguida. Solo si la frase parece seguir se espera un poco más.
     const go = async () => {
-      clearTimeout(this._gapT); clearTimeout(this._capT); let q = (this._pending || '').trim(); const bef = this._before; this._pending = null; this.stopWake();
+      clearTimeout(this._gapT); clearTimeout(this._capT); let q = (this._pending || '').trim(); const bef = this._before; Diag.add('envía', '«' + q + '»' + (bef ? ' · antes: «' + bef.slice(-50) + '»' : '')); this._pending = null; this.stopWake();
       const long = q.split(/\s+/).filter(Boolean).length >= 8 || /(,|\b(y|pero|que|porque|o|entonces|como|si|cuando|para|con|de|a|el|la|un|una|es que)\s*)$/i.test(q);
       if (long && !this.busy) { this.busy = true; try { const more = await listen(1800, true, true, { max: LISTEN_MAX[listenMode()] }); if (more) q = (q + ' ' + more).trim(); } finally { this.busy = false; } }
       this.wakeHeard(q, bef, this._low);
     };
     r.onresult = e => {
-      if (Voice.speaking) return; Table.touch(); if (!this._lt0) this._lt0 = performance.now();
+      if (Voice.speaking) { Diag.add('ignora', 'oyó mientras Josi hablaba'); return; } Table.touch(); if (!this._lt0) this._lt0 = performance.now();
       const parts = []; for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
+      { const L = e.results[e.results.length - 1]; Diag.add(L.isFinal ? 'oye' : 'oye~', '«' + parts[parts.length - 1].trim() + '»' + (L.isFinal ? ' (final, ' + Math.round((L[0].confidence || 0) * 100) + '%)' : '')); }
       App.wakeSeen = { t: parts.join(' ').trim(), ts: Date.now() }; App.dirty = true;
       let wi = -1, m = null; for (let i = 0; i < parts.length; i++) { m = parts[i].match(wakeRe()); if (m) { wi = i; break; } }
       // charla de fondo: se guarda en memoria lo que se dijo antes de que te llamen
       for (let i = this._pushed; i < e.results.length; i++) { if (!e.results[i].isFinal) break; if (Overlap.low(e.results[i])) { if (wi < 0 || i < wi) Overlap.note(); } else if (wi < 0 || i < wi) Table.add(parts[i]); this._pushed = i + 1; }
       if (wi < 0) return;
-      if (!this._ltJ) { this._ltJ = true; Lat.begin('llamada', this._lt0); Lat.mark('josi'); }
+      if (!this._ltJ) { this._ltJ = true; Lat.begin('llamada', this._lt0); Lat.mark('josi'); Diag.add('«Josi»', 'palabra detectada'); }
       const rest = (parts[wi].slice(m.index + m[0].length) + ' ' + parts.slice(wi + 1).join(' ')).replace(/^[\s,.!¿?]+/, '').replace(/\s+/g, ' ').trim();
       this._before = parts[wi].slice(0, m.index).replace(/[\s,.!¿?]+$/, '').trim(); this._pending = rest; this._low = Overlap.low(e.results[wi]);
       clearTimeout(this._gapT);
@@ -3715,18 +3749,19 @@ const Talk = {
       this._gapT = setTimeout(go, PRESENCE_RE.test(rest) ? 650 : rest.split(/\s+/).filter(Boolean).length < 2 ? 1200 : 1700); // por si el final tarda en llegar
     };
     r.onerror = e => {
+      Diag.add('error', 'micrófono: ' + e.error);
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.wake = false; saveSettings(); micNote(SR_ERR[e.error], 9000); }
       else if (e.error === 'audio-capture') micNote(SR_ERR['audio-capture']);
       else if (e.error === 'network') this.wakeErrors++;
       else if (e.error !== 'no-speech' && e.error !== 'aborted') logLine('!', 'Escucha de «Josi»: ' + e.error);
     };
     r.onend = () => {
-      this.rec = null; this.wakeActive = false; App.dirty = true;
+      Diag.add('escucha', 'termina'); this.rec = null; this.wakeActive = false; App.dirty = true;
       const pend = this._pending; this._pending = null;
       if (pend != null && !this.busy) { this.wakeHeard(pend, this._before); return; }
       if (!this.busy && this.wakeWanted()) this._rt = setTimeout(() => this.startWake(), this.wakeErrors > 3 ? 5000 : 250);
     };
-    try { r.start(); this.rec = r; this.wakeActive = true; App.dirty = true; } catch (e) { this.rec = null; }
+    try { r.start(); this.rec = r; this.wakeActive = true; App.dirty = true; Diag.add('escucha', r.continuous ? 'inicia (continuo)' : 'inicia (por frases)'); } catch (e) { this.rec = null; Diag.add('error', 'no pudo iniciar: ' + e.message); }
   },
   stopWake() { clearTimeout(this._rt); clearTimeout(this._gapT); clearTimeout(this._capT); const r = this.rec; this.rec = null; this.wakeActive = false; if (r) { r.onend = null; r.onresult = null; try { r.abort(); } catch (e) {} } },
   stopWakeAsync() {
@@ -5328,7 +5363,8 @@ function viewSettings() {
     <div class="f"><span>Avisar cuando hablan a la vez <span class="d">Si varias personas hablan juntas, Josi lo nota, no toma ese texto como contexto y pide hablar de uno en uno (como mucho cada 15 minutos)</span></span><input type="checkbox" id="sOverlap" ${S.overlap !== false ? 'checked' : ''}></div>
     <div class="f"><span>Josi puede pedir la palabra <span class="d">En una pausa de la charla, si tiene algo útil dice «un momento» y espera tu permiso. Máximo 6 veces por hora; no pide la palabra en modo Normal ni con voz en vivo</span></span><input type="checkbox" id="sFloor" ${S.floor !== false ? 'checked' : ''}></div>
     <div class="f"><span>Prueba de conversación <span class="d">Hablen como en la mesa y mira qué entendió Josi, cuánto tiempo escuchó y por qué paró</span></span><button class="btn small" id="sTalkTest">${ico('mic')} Probar</button></div>
-    <div class="f"><span>Tiempos de voz <span class="d">Mide cuánto tarda Josi en responderte, paso a paso. Sirve para encontrar dónde está la demora</span></span><button class="btn small" id="sLat">Ver</button></div>
+    <div class="f"><span>Escucha de «Josi» <span class="d">Continuo: oye toda la charla sin cortes y entiende mejor el contexto. Por frases: reinicia tras cada frase (puede perder palabras entre una y otra)</span></span><select id="sWakeMode"><option value="continuo" ${S.wakeMode !== 'frases' ? 'selected' : ''}>Continuo</option><option value="frases" ${S.wakeMode === 'frases' ? 'selected' : ''}>Por frases</option></select></div>
+    <div class="f"><span>Diagnóstico de voz <span class="d">Diario de lo que oye y hace Josi, y tiempos de respuesta. Cópialo y pégalo en el chat para encontrar fallas</span></span><button class="btn small" id="sLat">Abrir</button></div>
     <div class="f"><span>Reconocer voces <span class="d">Experimental, solo en voz en vivo. Josi distingue quién habla por el timbre y pregunta por voces nuevas. Todo se calcula en este celular y no se envía audio a ninguna parte.</span></span><input type="checkbox" id="sVoiceId" ${S.voiceId !== false ? 'checked' : ''}></div>
     <div class="f" style="display:block">${voiceBox()}</div>
     <div class="f"><span>Usar mi GPS real en simulación <span class="d">Para probar el mapa y la ruta con tu ubicación verdadera</span></span><input type="checkbox" id="sGpsReal" ${S.gpsReal !== false ? 'checked' : ''}></div>
@@ -5338,7 +5374,7 @@ function viewSettings() {
     <div class="f"><span>Voz <span class="d">Si no ves una voz masculina: Ajustes de Android → Accesibilidad → Texto a voz → Google → Instalar datos de voz → Español, y elige una voz masculina.</span></span><select id="sVoice"><option value="">Automática</option>${Josi.voices().map(v => `<option value="${esc(v.name)}" ${S.voiceName === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select></div>
     <div class="f"><span>Tono <span class="d">Más bajo suena más grave</span></span><input type="range" id="sPitch" min="0.5" max="1.3" step="0.05" value="${S.voicePitch ?? 0.85}"></div>
     <div class="f"><span>Velocidad al hablar</span><input type="range" id="sRate" min="0.8" max="1.25" step="0.05" value="${S.voiceRate ?? 1}"></div>
-    <div class="f"><span>Josi escucha tus respuestas <span class="d">Solo al inicio, con el auto detenido. Usa el reconocimiento de voz de Google: necesita internet y permiso de micrófono.</span></span><input type="checkbox" id="sListen" ${S.voiceListen ? 'checked' : ''}></div>
+    <div class="f"><span>Josi escucha tus respuestas <span class="d">Solo al inicio, con el auto detenido. Usa el reconocimiento de voz de Google: necesita internet y permiso de micrófono.</span></span><input type="checkbox" id="sListenOn" ${S.voiceListen ? 'checked' : ''}></div>
     <div class="f"><span>Detectar baches y rompemuelles <span class="d">Con el sensor de movimiento de la tablet. Debe ir bien fija en su soporte.</span></span><input type="checkbox" id="sBumps" ${S.bumps ? 'checked' : ''}></div>
     <div class="f"><span>Conectar solo al adaptador USB al abrir la app <span class="d">Después de darle permiso la primera vez</span></span><input type="checkbox" id="sAutoC" ${S.autoConnect ? 'checked' : ''}></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="sVoiceTest">Probar voz</button></div>
@@ -5462,6 +5498,7 @@ function bindSettings() {
   $('#sGain').onchange = e => { S.micGain = +e.target.value; saveSettings(); toast('Sensibilidad: ' + e.target.selectedOptions[0].text); };
   $('#sFloor').onchange = e => { S.floor = e.target.checked; saveSettings(); };
   $('#sLat').onclick = () => Lat.show();
+  $('#sWakeMode').onchange = e => { S.wakeMode = e.target.value; saveSettings(); Talk.stopWake(); setTimeout(() => Talk.startWake(), 500); Diag.add('ajuste', 'modo ' + S.wakeMode); toast('Escucha: ' + e.target.selectedOptions[0].text); };
   $('#sTalkTest').onclick = () => {
     openModal(`<h2>Prueba de conversación</h2><p class="muted" id="ttInfo">Toca «Empezar» y conversen con naturalidad, con pausas normales. Josi solo escucha y escribe lo que entiende; no responde. Termina cuando haya un silencio largo o a los ${LISTEN_MAX[listenMode()] / 1000} s.</p><div id="ttBox" style="min-height:110px;max-height:220px;overflow:auto;background:var(--s2);border-radius:12px;padding:10px;margin:8px 0;white-space:pre-wrap"></div>
       <div class="actions"><button class="btn" id="ttNo">Cerrar</button><button class="btn primary" id="ttGo">Empezar</button></div>`);
@@ -5502,7 +5539,7 @@ function bindSettings() {
     if (r) { Josi.speak(r.say, true); toast('Gemini respondió: ' + r.say.slice(0, 90)); } else errorBox('Gemini no respondió', (App.aiErr ? aiErrSpeech() + ' [' + (App.aiErr.status || 'sin conexión') + (App.aiErr.detail ? ': ' + App.aiErr.detail : '') + ']' : 'Sin respuesta.') + ' Si abriste el archivo guardado en vez de tu enlace https, tampoco funciona.');
   };
   $('#sName').onchange = e => { S.userName = e.target.value.trim() || 'Edwin'; saveSettings(); };
-  $('#sListen').onchange = e => { S.voiceListen = e.target.checked; saveSettings(); };
+  $('#sListenOn').onchange = e => { S.voiceListen = e.target.checked; saveSettings(); };
   $('#sBumps').onchange = e => { S.bumps = e.target.checked; saveSettings(); };
   $('#sAutoC').onchange = e => { S.autoConnect = e.target.checked; saveSettings(); };
   $('#sVoiceOn').onchange = e => { S.voice = e.target.checked; saveSettings(); drawVB(); if (!S.voice) try { speechSynthesis.cancel(); } catch (_) {} };
