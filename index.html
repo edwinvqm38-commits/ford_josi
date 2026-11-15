@@ -3623,7 +3623,7 @@ A veces el sistema te enviará avisos entre corchetes: díselos con tus palabras
 const WAKE = /\b(?:j|y|h)o+s+(?:i|í|y|ie|e|é)\b/i;
 /* ---------- Mesa: lo último que se habló en el auto (solo en memoria, se manda a la IA únicamente cuando te llaman) ---------- */
 const PRESENCE_RE = /^(est[aá]s?( ah[ií]| por ah[ií]| despiert[oa]| escuchando)?|me (escuchas|oyes|copias|o[ií]s)|hola|buen[oa]s( d[ií]as| tardes| noches)?|sigues( ah[ií])?|qu[eé] tal|ah[ií])\W*$/i;
-const APP_VER = '4.1 · 14 nov';
+const APP_VER = '4.2 · 15 nov';
 // avisa si hay una versión más nueva publicada (el navegador a veces conserva la anterior)
 setTimeout(async () => { try { const r = await fetch('version.txt?ts=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return; const v = (await r.text()).trim(); if (v && v.length < 30 && v !== APP_VER) { micNote('Hay una versión nueva (' + v + '). Recarga la página para usarla.', 12000); logLine('i', 'Versión nueva disponible: ' + v); } } catch (e) {} }, 4000);
 const Table = {
@@ -4690,6 +4690,7 @@ const ICO = {
   star: "<path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\"/>",
   trophy: "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\"/><path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\"/><path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\"/><path d=\"M4 22h16\"/><path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\"/><path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\"/>",
   calendar: "<path d=\"M8 2v3\"/><path d=\"M16 2v3\"/><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 9h18\"/><path d=\"M8 13h.01\"/><path d=\"M12 13h.01\"/><path d=\"M16 13h.01\"/><path d=\"M8 17h.01\"/><path d=\"M12 17h.01\"/><path d=\"M16 17h.01\"/>",
+  cloud: "<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\"/>",
   x: "<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>",
   flag: "<path d=\"M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528\"/>",
   volume: "<path d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z\"/><path d=\"M16 9a5 5 0 0 1 0 6\"/><path d=\"M19.364 18.364a9 9 0 0 0 0-12.728\"/>",
@@ -5431,9 +5432,144 @@ async function runTest() {
 }
 
 /* ---------- Vista: Ajustes ---------- */
+/* ---------- Cuenta de Google y sincronización (carpeta privada de la app en tu Drive; sin servidor propio) ---------- */
+const CLOUDKEY = 'josi.cloud.v1';
+const Cloud = {
+  st: store.get(CLOUDKEY, { base: {}, dels: {}, setSig: '', setTs: 0, sig: '', last: 0, user: '' }),
+  tok: null, exp: 0, busy: false, tc: null, tcId: '', err: '',
+  SCOPE: 'https://www.googleapis.com/auth/drive.appdata openid email',
+  SET: ['userName', 'botName', 'econ', 'currency', 'price', 'baseKmpl', 'goalPct', 'speedLimit', 'sensitivity', 'calib', 'companion', 'azVoice', 'azStyle', 'voicePitch', 'voiceRate', 'nightAuto', 'sounds', 'keepAwake', 'autoTrip', 'bumps'],
+  get native() { return typeof NATIVE !== 'undefined' && NATIVE; },
+  get signed() { return !!this.st.user; },
+  get valid() { return !!this.tok && Date.now() < this.exp - 60000; },
+  save() { store.set(CLOUDKEY, this.st); },
+  cols() {
+    return [
+      { id: 'memory', get: () => Memory.list, set: v => { Memory.list = v; Memory.save(); }, key: m => normName(m.t), ts: m => m.ts || 0, max: 40 },
+      { id: 'people', get: () => People.list, set: v => { People.list = v; People.save(); }, key: p => normName(p.name), ts: p => p.ts || 0, max: 12 },
+      { id: 'spots', get: () => Spots.list, set: v => { Spots.list = v; Spots.save(); }, key: x => x.id, ts: x => x.added || 0, max: 400 },
+      { id: 'places', get: () => Places.list.filter(p => !p.sim), set: v => { Places.list = [...Places.list.filter(p => p.sim), ...v]; Places.save(); }, key: p => p.id, ts: p => p.last || 0, max: 200 },
+      { id: 'hazards', get: () => Hazards.list.filter(h => !h.sim), set: v => { Hazards.list = [...Hazards.list.filter(h => h.sim), ...v]; Hazards.save(); }, key: h => h.id, ts: h => h.first || 0, max: 500 },
+      { id: 'sessions', get: () => Convo.d.sessions.filter(x => !x.sim), set: v => { Convo.d.sessions = [...v, ...Convo.d.sessions.filter(x => x.sim)]; Convo.save(); }, key: x => x.id, ts: x => x.last || x.ts || 0, max: 60 },
+      { id: 'trips', get: () => App.trips.filter(t => !t.sim), set: v => { App.trips = [...v, ...App.trips.filter(t => t.sim)]; saveTrips(); App.dirty = true; }, key: t => t.id, ts: t => t.start || 0, max: 300, strip: true },
+    ];
+  },
+  colSig(c, arr) { return arr.map(x => c.key(x) + ':' + c.ts(x)).join('|'); },
+  setSnap() { const o = {}; for (const k of this.SET) if (S[k] !== undefined) o[k] = S[k]; return o; },
+  localSig() {
+    const t = this.cols().map(c => c.id + '=' + this.colSig(c, c.get())).join(';') + JSON.stringify(this.setSnap());
+    let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return String(h);
+  },
+  merge(c, local, remote, base, dels, now) {
+    const lk = new Set(local.map(c.key));
+    for (const k of base || []) if (!lk.has(k)) dels[k] = now;           // lo que borraste aquí desde la última sincronización
+    const map = new Map();
+    for (const it of remote) { const k = c.key(it); if (k) map.set(k, it); }
+    for (const it of local) { const k = c.key(it); if (!k) continue; const r = map.get(k); if (!r || c.ts(it) >= c.ts(r)) map.set(k, it); }
+    const out = []; for (const [k, it] of map) { if (dels[k] && dels[k] >= c.ts(it)) continue; out.push(it); }
+    out.sort((a, b) => c.ts(b) - c.ts(a)); return out.slice(0, c.max);
+  },
+  gis() {
+    if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+    return this._g || (this._g = new Promise((res, rej) => { const el = document.createElement('script'); el.src = 'https://accounts.google.com/gsi/client'; el.async = true; el.onload = res; el.onerror = () => { this._g = null; rej(new Error('No se pudo cargar el acceso de Google (¿hay internet?)')); }; document.head.appendChild(el); }));
+  },
+  async token(manual) {
+    if (this.valid) return this.tok;
+    const id = (S.gClientId || '').trim(); if (!id) throw new Error('Falta el ID de cliente de Google');
+    await this.gis();
+    return new Promise((res, rej) => {
+      if (!this.tc || this.tcId !== id) { this.tcId = id; this.tc = google.accounts.oauth2.initTokenClient({ client_id: id, scope: this.SCOPE, callback: () => {}, error_callback: () => {} }); }
+      this.tc.callback = r => { if (r.error) rej(new Error(r.error_description || r.error)); else { this.tok = r.access_token; this.exp = Date.now() + (r.expires_in || 3600) * 1000; res(this.tok); } };
+      this.tc.error_callback = e => rej(new Error(e && e.type === 'popup_closed' ? 'Cerraste la ventana de Google' : e && e.type === 'popup_failed_to_open' ? 'El navegador bloqueó la ventana de Google' : 'No se pudo iniciar sesión'));
+      this.tc.requestAccessToken({ prompt: this.signed ? '' : 'select_account' });
+    });
+  },
+  async api(url, opt = {}) {
+    const r = await fetch(url, { ...opt, headers: { Authorization: 'Bearer ' + this.tok, ...(opt.headers || {}) } });
+    if (r.status === 401) { this.tok = null; throw new Error('La sesión de Google caducó: toca Sincronizar ahora'); }
+    if (r.status === 403) throw new Error('Google Drive negó el acceso: activa «Google Drive API» en tu proyecto de Google Cloud');
+    if (!r.ok) throw new Error('Google Drive respondió ' + r.status);
+    return r;
+  },
+  async find() { const r = await this.api('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1&fields=files(id)&q=' + encodeURIComponent("name='josi-sync.json'")); const j = await r.json(); return (j.files && j.files[0] && j.files[0].id) || null; },
+  async get(fid) { const r = await this.api('https://www.googleapis.com/drive/v3/files/' + fid + '?alt=media'); return r.json(); },
+  async put(fid, body) {
+    const txt = JSON.stringify(body);
+    if (fid) { await this.api('https://www.googleapis.com/upload/drive/v3/files/' + fid + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: txt }); return fid; }
+    const bd = 'josi' + Math.random().toString(36).slice(2);
+    const mp = `--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: 'josi-sync.json', parents: ['appDataFolder'] })}\r\n--${bd}\r\nContent-Type: application/json\r\n\r\n${txt}\r\n--${bd}--`;
+    const r = await this.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + bd }, body: mp });
+    return (await r.json()).id;
+  },
+  async sync(manual) {
+    if (this.busy || this.native) return false; this.busy = true; this.err = ''; this.render();
+    try {
+      await this.token(manual);
+      if (!this.st.user) { try { const u = await (await this.api('https://www.googleapis.com/oauth2/v3/userinfo')).json(); this.st.user = u.email || 'cuenta de Google'; } catch (e) { this.st.user = 'cuenta de Google'; } }
+      const fid = await this.find(), remote = fid ? await this.get(fid) : null, now = Date.now(), out = {}, dels = {};
+      let changed = 0;
+      for (const c of this.cols()) {
+        const d = Object.assign({}, (remote && remote.dels && remote.dels[c.id]) || {});
+        const ld = this.st.dels[c.id] || {}; for (const k in ld) d[k] = Math.max(d[k] || 0, ld[k]);
+        const local = c.get(), m = this.merge(c, local, (remote && remote.cols && remote.cols[c.id]) || [], this.st.base[c.id], d, now);
+        if (this.colSig(c, m) !== this.colSig(c, local)) { c.set(m); changed++; }
+        for (const k in d) if (now - d[k] > 60 * 86400000) delete d[k];
+        this.st.base[c.id] = c.get().map(c.key); this.st.dels[c.id] = d; dels[c.id] = d;
+        out[c.id] = c.strip ? m.map((t, i) => (i < 8 ? t : { ...t, series: [], gps: [] })) : m;
+      }
+      const snap = this.setSnap(), sig = JSON.stringify(snap);
+      let setTs = this.st.setTs || 0;
+      if (!this.st.setSig && remote && remote.settings) { Object.assign(S, remote.settings); saveSettings(); setTs = remote.setTs || now; this.st.setSig = JSON.stringify(this.setSnap()); changed++; }
+      else if (sig !== this.st.setSig) { setTs = now; this.st.setSig = sig; }
+      else if (remote && remote.settings && (remote.setTs || 0) > setTs) { Object.assign(S, remote.settings); saveSettings(); setTs = remote.setTs; this.st.setSig = JSON.stringify(this.setSnap()); changed++; }
+      this.st.setTs = setTs;
+      await this.put(fid, { v: 1, ts: now, cols: out, dels, settings: this.setSnap(), setTs });
+      this.st.last = now; this.st.sig = this.localSig(); this.save();
+      if (changed) { App.dirty = true; try { renderView(); } catch (e) {} if (manual) toast('Datos de tu cuenta actualizados en este equipo'); }
+      else if (manual) toast('Sincronizado');
+      return true;
+    } catch (e) { this.err = e.message || String(e); if (manual) toast(this.err); return false; }
+    finally { this.busy = false; this.render(); }
+  },
+  async signIn() { if (!(S.gClientId || '').trim()) { toast('Pega primero el ID de cliente de Google'); return; } this.st.user = ''; this.save(); await this.sync(true); if (!this.st.user) this.err = this.err || 'No se inició sesión'; this.render(); },
+  signOut() {
+    try { if (this.tok && window.google && google.accounts.oauth2.revoke) google.accounts.oauth2.revoke(this.tok, () => {}); } catch (e) {}
+    this.tok = null; this.exp = 0; this.err = ''; this.st = { base: {}, dels: {}, setSig: '', setTs: 0, sig: '', last: 0, user: '' }; this.save(); this.render(); toast('Sesión cerrada. Tus datos siguen en este equipo y en tu Drive');
+  },
+  ago(t) { if (!t) return 'nunca'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'hace un momento' : m < 60 ? 'hace ' + m + ' min' : m < 1440 ? 'hace ' + Math.round(m / 60) + ' h' : 'hace ' + Math.round(m / 1440) + ' d'; },
+  html() {
+    if (this.native) return '<div class="d" style="padding:2px 0 6px">En la app instalada (APK) el inicio de sesión con Google llegará en la siguiente etapa. Por ahora úsalo desde Chrome.</div>';
+    const pend = this.signed && this.localSig() !== this.st.sig;
+    const stat = this.busy ? 'Sincronizando…' : this.signed ? `Conectado como <b>${esc(this.st.user)}</b> · última sincronización ${this.ago(this.st.last)}${pend ? ' · cambios pendientes' : ''}` : 'Sin sesión. Tus datos están solo en este equipo.';
+    return `<div id="cloudStat" style="padding:2px 0 8px">${stat}</div>${this.err ? `<div class="d" style="color:var(--bad,#f87171);padding-bottom:8px">${esc(this.err)}</div>` : ''}
+    <div class="f"><span>ID de cliente de Google <span class="d">Termina en .apps.googleusercontent.com. Se guarda solo en este equipo</span></span><input type="text" id="sGid" value="${esc(S.gClientId || '')}" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false"></div>
+    <div class="f"><span>Sincronizar automáticamente <span class="d">Sube los cambios y baja los de tus otros equipos mientras la app está abierta</span></span><input type="checkbox" id="sCloudAuto" ${S.cloudAuto !== false ? 'checked' : ''}></div>
+    <div class="actions" style="margin-top:6px">${this.signed ? '<button class="btn" id="cloudOut">Cerrar sesión</button><button class="btn primary" id="cloudNow">Sincronizar ahora</button>' : '<button class="btn primary" id="cloudIn">Iniciar sesión con Google</button>'}</div>
+    <details style="margin-top:10px"><summary class="d">¿Cómo obtengo el ID de cliente? (gratis, 5 minutos)</summary><ol class="d" style="margin:8px 0 0 18px;padding:0;line-height:1.5"><li>Entra a console.cloud.google.com y crea un proyecto.</li><li>Activa <b>Google Drive API</b> (APIs y servicios → Biblioteca).</li><li>Pantalla de consentimiento: agrega tu correo como usuario de prueba y publícala en producción para que el acceso no caduque.</li><li>Credenciales → Crear ID de cliente OAuth → <b>Aplicación web</b>. En orígenes autorizados de JavaScript pon <b>${esc(location.origin === 'null' ? 'https://edwinvqm38-commits.github.io' : location.origin)}</b>.</li><li>Copia el ID y pégalo arriba.</li></ol></details>
+    <div class="d" style="margin-top:10px">Se sincronizan: memoria, personas, sitios, baches, conversaciones, viajes y preferencias. <b>Nunca</b> tu clave de Gemini ni las de voz, ni las huellas de voz. Todo queda en una carpeta oculta de tu Drive que solo esta app puede leer.</div>`;
+  },
+  render() { const el = document.getElementById('cloudBody'); if (!el) return; el.innerHTML = this.html(); this.bind(); },
+  bind() {
+    const g = id => document.getElementById(id); if (!g('cloudBody')) return;
+    if (g('sGid')) g('sGid').onchange = e => { S.gClientId = e.target.value.trim(); this.tc = null; saveSettings(); };
+    if (g('sCloudAuto')) g('sCloudAuto').onchange = e => { S.cloudAuto = e.target.checked; saveSettings(); };
+    if (g('cloudIn')) g('cloudIn').onclick = () => { if (g('sGid')) { S.gClientId = g('sGid').value.trim(); saveSettings(); } this.signIn(); };
+    if (g('cloudNow')) g('cloudNow').onclick = () => this.sync(true);
+    if (g('cloudOut')) g('cloudOut').onclick = () => this.signOut();
+  },
+  start() {
+    if (this.native) return;
+    document.addEventListener('click', () => { if (this.signed && S.cloudAuto !== false && !this.valid && !this.busy && !this._once) { this._once = true; this.sync(true); } }, true);
+    setInterval(() => { if (!this.signed || S.cloudAuto === false || this.busy || !this.valid) return; if (this.localSig() !== this.st.sig || Date.now() - this.st.last > 300000) this.sync(false); }, 45000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && this.signed && S.cloudAuto !== false && this.valid && !this.busy && this.localSig() !== this.st.sig) this.sync(false); });
+  },
+};
+Cloud.start();
+
 function viewSettings() {
   const since = S.tankMark ? App.trips.filter(t => !t.sim && t.start >= S.tankMark).reduce((a, t) => a + t.L, 0) : null;
   return `<div class="grid2">
+  <section class="card form" style="grid-column:1/-1"><div class="card-h">${ico('cloud')}Cuenta de Google y sincronización</div><div id="cloudBody">${Cloud.html()}</div></section>
   <section class="card form"><div class="card-h">Preferencias</div>
     <div class="f"><span>Unidades de rendimiento</span><select id="sEcon">${econOptions()}</select></div>
     <div class="f"><span>Moneda <span class="d">Símbolo que se muestra, ej. S/, $, €</span></span><input type="text" id="sCur" maxlength="4" value="${esc(S.currency)}"></div>
@@ -5576,7 +5712,7 @@ function viewSettings() {
 }
 function realAvg() { const t = App.trips.filter(x => !x.sim && x.kmpl && x.km > 2); if (t.length < 3) return null; return t.reduce((a, x) => a + x.km, 0) / t.reduce((a, x) => a + x.L, 0); }
 function bindSettings() {
-  const re = () => renderView();
+  const re = () => renderView(); Cloud.bind();
   $('#sAzKey').onchange = e => { S.azKey = e.target.value.trim(); Voice.azFails = 0; saveSettings(); };
   $('#sAzRegion').onchange = e => { S.azRegion = e.target.value.trim().toLowerCase().replace(/\s+/g, ''); Voice.azFails = 0; saveSettings(); };
   $('#sAzVoice').onchange = e => { S.azVoice = e.target.value; saveSettings(); };
