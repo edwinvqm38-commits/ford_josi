@@ -9,3 +9,9 @@ app/android/app/src/main/assets/public/
 app/android/app/src/main/assets/capacitor.config.json
 app/android/app/src/main/assets/capacitor.plugins.json
 
+
+# Llaves de firma: nunca al repositorio
+*.jks
+*.keystore
+*.pem
+.env

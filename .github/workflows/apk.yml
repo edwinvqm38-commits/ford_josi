@@ -52,14 +52,13 @@ jobs:
         env:
           KS: ${{ secrets.JOSI_KEYSTORE_B64 }}
         run: |
-          # Con secretos del repositorio se usa tu llave privada; si no, la llave de instalación directa del repo
-          # (misma firma siempre, así las actualizaciones se instalan encima de la anterior).
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > $RUNNER_TEMP/josi.jks
-            echo "file=$RUNNER_TEMP/josi.jks" >> $GITHUB_OUTPUT
-          else
-            echo "file=$GITHUB_WORKSPACE/app/android/josi-sideload.jks" >> $GITHUB_OUTPUT
+          # La llave de firma vive solo en los secretos del repositorio (nunca en el código).
+          if [ -z "$KS" ]; then
+            echo "::error::Falta el secreto JOSI_KEYSTORE_B64. Agrégalo en Settings > Secrets and variables > Actions."
+            exit 1
           fi
+          echo "$KS" | base64 -d > $RUNNER_TEMP/josi.jks
+          echo "file=$RUNNER_TEMP/josi.jks" >> $GITHUB_OUTPUT
 
       - name: Compilar APK
         working-directory: app/android
@@ -67,9 +66,9 @@ jobs:
           VERSION_NAME: ${{ steps.v.outputs.name }}
           VERSION_CODE: ${{ steps.v.outputs.code }}
           KEYSTORE_FILE: ${{ steps.key.outputs.file }}
-          KEYSTORE_PASSWORD: ${{ secrets.JOSI_KEYSTORE_PASSWORD || 'josi-sideload' }}
+          KEYSTORE_PASSWORD: ${{ secrets.JOSI_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.JOSI_KEY_ALIAS || 'josi' }}
-          KEY_PASSWORD: ${{ secrets.JOSI_KEY_PASSWORD || 'josi-sideload' }}
+          KEY_PASSWORD: ${{ secrets.JOSI_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           set +e
