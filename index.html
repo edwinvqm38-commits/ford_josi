@@ -1343,11 +1343,14 @@ body.night .josi-car{animation:none}
 @media (min-width:1001px){
   .live:not(.has-sim) .tiles{grid-template-rows:1.55fr 1.1fr 1fr 1fr}
   .live:not(.has-sim) .tiles .tile:nth-child(-n+2){grid-column:span 2}
-  .live:not(.has-sim) .tiles .tile:nth-child(1) .v{font-size:clamp(44px,10vh,80px)!important;line-height:.95;color:var(--ink-num)}
-  .live:not(.has-sim) .tiles .tile:nth-child(2) .v{font-size:clamp(30px,6.2vh,48px)!important;line-height:1}
+  .live:not(.has-sim) .tiles .tile:nth-child(1) .v{font-size:clamp(44px,9vh,80px)!important;line-height:.95;color:var(--ink-num)}
+  .live:not(.has-sim) .tiles .tile:nth-child(2) .v{font-size:clamp(28px,4.6vh,48px)!important;line-height:1}
   .live .tiles .tile:nth-child(1){border-color:rgba(var(--acc),.28)}
 }
 @media (min-width:1001px) and (min-height:701px){.live:not(.has-sim) .tiles{grid-template-rows:1.7fr 1.1fr 1fr 1fr}}
+/* Bloque 4 · tablets: las 4 tarjetas pequeñas no desbordan; vertical 7-10 pulgadas con más alto para instrumentos */
+@media (min-width:1001px){.live.has-sim .tiles .tile .v{font-size:clamp(20px,3.4vh,30px)!important}.live:not(.has-sim) .tiles .tile:nth-child(n+3) .v{font-size:clamp(20px,3.4vh,32px)!important}.live:not(.has-sim) .tiles .tile:nth-child(n+3){padding:3px 10px;gap:0}.live:not(.has-sim) .tiles .tile:nth-child(n+3) .t{font-size:11.5px}}
+@media (min-width:641px) and (max-width:1000px) and (orientation:portrait) and (min-height:700px){main.fit .live,main.fit .live.has-sim{grid-template-rows:minmax(0,1.25fr) minmax(0,1fr) auto auto}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}.tile .v{font-size:clamp(20px,2.6vh,28px)!important}.josi-car{height:36%!important}.gauge-sub b{font-size:15px}}
 /* Tipografía por tema */
 body[data-theme=luxury] .tile .v,body[data-theme=luxury] .gauge-card b.num{font-weight:300;letter-spacing:.01em}
 body[data-theme=luxury] .tile .t,body[data-theme=luxury] .card-h{letter-spacing:.06em}

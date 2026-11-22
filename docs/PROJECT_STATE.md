@@ -17,3 +17,7 @@
 - Tipografía por tema (Luxury ligera/espaciada; Sport pesada/mayúsculas).
 - Animaciones: ajuste `anim` (off/standard/premium) vía `body[data-anim]`; `Fx.reduced()` respeta «off» y movimiento reducido; clase `body.driving` (>5 km/h) apaga animaciones decorativas. Los valores reales no se animan desde cero ni se retrasan.
 - Pendiente: count-up/barras/líneas animadas en gráficas, skeletons, Spring; vertical y 4:3 sin revisar.
+## Bloque 4 (hecho)
+- Matriz de tamaños `node tests/layout.mjs [carpeta] [sim]`: 960×540, 1024×600, 1280×720, 1280×800, 1024×768, 1366×768, 1920×1200, 2560×1080, 800×1280, 600×1024, 768×1024. Detecta scroll horizontal, elementos fuera de pantalla y texto de tarjetas desbordado. Estado: sin hallazgos en modo real ni simulación.
+- Correcciones: tarjetas pequeñas del cockpit (≥1001 px) sin recorte; vertical 641–1000 px: tarjetas en 3×2, auto de Josi sin recortar, más alto para instrumentos; en simulación a 1280×720 sin recorte.
+- Pendiente: pestañas en alturas ≤560 px (960×540) se ven poco pulidas; pestañas Viajes/Rutas/Diagnóstico/Ajustes solo revisadas por el detector automático en el cockpit, no visualmente; modo GPS (`viewLiveGps`) no revisado a otros tamaños.
