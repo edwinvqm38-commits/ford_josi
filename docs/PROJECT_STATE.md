@@ -45,3 +45,8 @@
 - Voz: la esfera se sustituyó por cintas de onda (4 capas, canvas, reaccionan a `Wave.level()`), color de acento en «Hablando»; subtítulo `.josi-sub` con palabras que se iluminan (usa `App.josiSays`, progreso estimado por tiempo, no por audio).
 - Color de acento personalizado (`S.accent`): 9 colores + selector libre + «Auto». Sobrescribe `--accent/--acc/--glow/--tint/--on-acc` en `body`. Se sincroniza con Drive.
 - Pendiente: probar la visual de voz con voz real (Azure/tablet/Live) en la tablet; el progreso del subtítulo es estimado; revisar iconos de pestañas Viajes/Rutas/Diagnóstico/Ajustes en detalle.
+## Bloque 10 (hecho)
+- Pantalla de inicio (`#splash`, módulo `Splash`): ~1,7 s (0,6 s con movimiento reducido), con barra de carga y salida suave; toque para saltarla; ajuste `S.splash`. Por defecto muestra la marca Josi (foto del auto + wordmark). Failsafe: se elimina a los 8 s.
+- Marca personal (`Brand`, clave localStorage `josi.brand.v1`, NO se sincroniza ni va en el repositorio): el usuario elige una imagen; se reduce a 1600 px, se detecta el fondo y, si es liso, se recorta el logo con fondo transparente para la cabecera (`S.brandHdr`). Ajuste Cubrir/Contener.
+- Decisión: el logo de Ford NO está en el repositorio ni en la app distribuible (marca registrada; el producto será comercial). Cada usuario puede cargar su propia imagen en su aparato.
+- Cabecera limpia sin conexión (`body.idle`): oculta Bache, Iniciar viaje, GPS/Voz y reloj de viaje hasta conectar.

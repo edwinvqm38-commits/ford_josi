@@ -1,5 +1,5 @@
 # Pruebas
-`node tests/run.mjs` (Chromium headless, 1024×600): 33/33 OK, sin errores de consola. Cubre decodeDTC, lista de comandos de solo consulta, bloqueo/permiso de clearDTCs, valor por defecto, aplicación de los 3 temas y que el cambio de tema no reemplaza el transporte, niveles de animación y modo conducción. Capturas visuales revisadas a mano en 1024×600 y 1280×800 (simulador).
+`node tests/run.mjs` (Chromium headless, 1024×600): 35/35 OK, sin errores de consola. Cubre decodeDTC, lista de comandos de solo consulta, bloqueo/permiso de clearDTCs, valor por defecto, aplicación de los 3 temas y que el cambio de tema no reemplaza el transporte, niveles de animación y modo conducción. Capturas visuales revisadas a mano en 1024×600 y 1280×800 (simulador).
 Pendiente en tablet real: Bluetooth/USB ELM327, GPS, APK, rendimiento (FPS/RAM no medidos).
 
 `node tests/layout.mjs`: 11 tamaños × (real, simulación) sin hallazgos (solo pestaña En vivo, Chromium de escritorio, sin dispositivo físico). El detector no sustituye una revisión visual en tablet.
@@ -17,3 +17,5 @@ Bloque 8: cambio solo de color/fondo; no se repitió `layout.mjs` (no altera dim
 
 Bloque 9: voz forzada (Voice.speaking + App.josiSays) verificada en captura; no con audio real.
 Bloque 9: `layout.mjs` 11 tamaños × (real, simulación) sin hallazgos tras corregir 3 recortes de etiquetas causados por la fuente nueva.
+
+Bloque 10: carga de imagen real (JPG) probada con Playwright: logo detectado en imagen de fondo liso (56 KB) y sin recorte en imagen texturada; layout 4 tamaños sin hallazgos. Splash visto en capturas; tiempos no medidos en tablet.
