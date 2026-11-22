@@ -29,6 +29,9 @@ const r = await pg.evaluate(async () => {
   for (const lv of ['off', 'strong', 'soft']) { S.ambient = lv; applyTheme(); out['ambiente ' + lv] = document.body.dataset.amb === lv && !!document.getElementById('ambient'); }
   { const t = document.createElement('div'); t.className = 'tile'; t.innerHTML = '<i class="meter"><b id="zzM"></b></i>'; document.body.appendChild(t); meter('zz', 0.5, 'info'); out['meter fija --f'] = t.style.getPropertyValue('--f') === '0.500'; t.remove(); }
   for (const bg of ['plain', 'carbon', 'grid', 'aurora', 'default']) { S.bg = bg; applyTheme(); out['fondo ' + bg] = document.body.dataset.bg === bg; }
+  S.accent = '#38e0d0'; applyTheme(); out['acento personalizado'] = document.body.style.getPropertyValue('--accent') === '#38e0d0' && C.accent === '#38e0d0' && document.body.style.getPropertyValue('--acc') === '56,224,208' && ACC_RGB.join() === '56,224,208';
+  S.accent = 'malo'; applyTheme(); out['acento inválido se ignora'] = document.body.style.getPropertyValue('--accent') === ''; S.accent = ''; applyTheme();
+  out['tipografía Barlow cargada'] = document.fonts.check('600 20px "Barlow Condensed"') && document.fonts.check('500 15px "Barlow"');
   const cn = App.connected, sv = App.vals.speed; App.connected = true; App.vals.speed = 60; await new Promise(r => setTimeout(r, 200));
   out['modo conducción (>5 km/h)'] = document.body.classList.contains('driving');
   App.vals.speed = 0; await new Promise(r => setTimeout(r, 200)); out['modo conducción se apaga detenido'] = !document.body.classList.contains('driving'); App.connected = cn; App.vals.speed = sv;

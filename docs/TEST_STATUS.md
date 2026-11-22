@@ -1,5 +1,5 @@
 # Pruebas
-`node tests/run.mjs` (Chromium headless, 1024×600): 30/30 OK, sin errores de consola. Cubre decodeDTC, lista de comandos de solo consulta, bloqueo/permiso de clearDTCs, valor por defecto, aplicación de los 3 temas y que el cambio de tema no reemplaza el transporte, niveles de animación y modo conducción. Capturas visuales revisadas a mano en 1024×600 y 1280×800 (simulador).
+`node tests/run.mjs` (Chromium headless, 1024×600): 33/33 OK, sin errores de consola. Cubre decodeDTC, lista de comandos de solo consulta, bloqueo/permiso de clearDTCs, valor por defecto, aplicación de los 3 temas y que el cambio de tema no reemplaza el transporte, niveles de animación y modo conducción. Capturas visuales revisadas a mano en 1024×600 y 1280×800 (simulador).
 Pendiente en tablet real: Bluetooth/USB ELM327, GPS, APK, rendimiento (FPS/RAM no medidos).
 
 `node tests/layout.mjs`: 11 tamaños × (real, simulación) sin hallazgos (solo pestaña En vivo, Chromium de escritorio, sin dispositivo físico). El detector no sustituye una revisión visual en tablet.
@@ -14,3 +14,5 @@ Montón JS ≈ 9.5 MB (valor aproximado del navegador). `index.html` = 1.01 MB. 
 Bloque 7: `node tests/layout.mjs` 11 tamaños en modo real y en simulación (panel flotante): sin hallazgos del detector.
 
 Bloque 8: cambio solo de color/fondo; no se repitió `layout.mjs` (no altera dimensiones). Revisión visual en capturas 1280×800 de los 5 temas.
+
+Bloque 9: voz forzada (Voice.speaking + App.josiSays) verificada en captura; no con audio real.

@@ -39,3 +39,9 @@
 - Los temas retintan también fondo y tarjetas (`--bg1/--bg2/--tint`, `--c1/--c2/--c3`); `TONE.info` sigue al acento.
 - Fondos configurables (`S.bg`): Degradado, Liso, Fibra de carbono, Cuadrícula, Aurora. Ajustes > Fondo.
 - Pendiente: tarjeta de Josi aún con leve tinte azul en algunos temas; diales <1001 px y vertical; modo diurno real por tema; editor; 3D.
+## Bloque 9 (hecho)
+- Tipografía unificada: Barlow (texto) + Barlow Condensed (cifras), incrustadas en base64 (latin, 500/600/700); reemplazan a Inter y Rajdhani.
+- Iconos y botones: botones 44 px, pastillas 40 px, trazo 1,75 en todos los iconos SVG, iconos de tarjetas con el color de acento; etiquetas en mayúsculas con espaciado.
+- Voz: la esfera se sustituyó por cintas de onda (4 capas, canvas, reaccionan a `Wave.level()`), color de acento en «Hablando»; subtítulo `.josi-sub` con palabras que se iluminan (usa `App.josiSays`, progreso estimado por tiempo, no por audio).
+- Color de acento personalizado (`S.accent`): 9 colores + selector libre + «Auto». Sobrescribe `--accent/--acc/--glow/--tint/--on-acc` en `body`. Se sincroniza con Drive.
+- Pendiente: probar la visual de voz con voz real (Azure/tablet/Live) en la tablet; el progreso del subtítulo es estimado; revisar iconos de pestañas Viajes/Rutas/Diagnóstico/Ajustes en detalle.
