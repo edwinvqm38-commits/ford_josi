@@ -29,5 +29,8 @@
 ## Bloque 6 (hecho)
 - Cuadro digital (≥1001 px, sin panel de simulación): Velocidad y RPM son diales circulares de 270° (`::before` con conic-gradient y propiedad registrada `--f`, animada con transición; `--tone` da el color por umbral). Columnas 27/33/40.
 - Iluminación ambiental (`S.ambient`: off/soft/strong, defecto soft): `#ambient` con luz de borde del color del tema; se pone roja si la velocidad supera `S.speedLimit`.
-- Con panel de simulación y en <1001 px se conserva el diseño previo (tarjetas normales con barra).
-- Pendiente: diales en horizontal <1001 px y vertical, marcas/escala numérica en los diales, auto 3D, fondo configurable, editor.
+- <1001 px (horizontal pequeño y vertical) conserva tarjetas con barra.
+## Bloque 7 (hecho)
+- Escala en los diales (`dialSVG`): marcas cada 10 km/h y 500 rpm, números cada 40 km/h y 2000 rpm (solo si alto ≥740 px), zona roja de RPM desde 5500. Velocidad convertida a la unidad elegida.
+- El panel del simulador ahora flota (≥1001 px y alto ≥561): el cockpit se ve igual con y sin simulación.
+- Pendiente: diales en <1001 px y vertical; auto 3D; fondo configurable; editor.
