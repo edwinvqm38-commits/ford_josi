@@ -19,6 +19,10 @@ const r = await pg.evaluate(async () => {
   out['defecto allowClearDtc=false'] = DEFAULTS.allowClearDtc === false;
   const sim = App.transport; for (const th of ['luxury', 'sport', 'estandar']) { S.theme = th; applyTheme(); out['tema ' + th] = document.body.dataset.theme === th && getComputedStyle(document.body).getPropertyValue('--accent').trim() === THEMES[th][2]; }
   out['cambio de tema no toca el transporte'] = App.transport === sim;
+  for (const lv of ['off', 'premium', 'standard']) { S.anim = lv; applyTheme(); out['animación ' + lv] = document.body.dataset.anim === lv && (lv !== 'off' || Fx.reduced() === true); }
+  const cn = App.connected, sv = App.vals.speed; App.connected = true; App.vals.speed = 60; await new Promise(r => setTimeout(r, 200));
+  out['modo conducción (>5 km/h)'] = document.body.classList.contains('driving');
+  App.vals.speed = 0; await new Promise(r => setTimeout(r, 200)); out['modo conducción se apaga detenido'] = !document.body.classList.contains('driving'); App.connected = cn; App.vals.speed = sv;
   return out;
 });
 let fail = 0; for (const [k, v] of Object.entries(r)) { console.log(v === true ? 'OK  ' : 'FAIL', k, v === true ? '' : v); if (v !== true) fail++; }
