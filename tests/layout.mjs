@@ -3,7 +3,8 @@ import { createRequire } from 'module'; const require = createRequire(import.met
 import path from 'path'; import { fileURLToPath } from 'url';
 const FILE = 'file://' + path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../index.html'); let fails = 0;
 const { chromium } = require('playwright'); const b = await chromium.launch();
-const sizes=[[960,540],[1024,600],[1280,720],[1280,800],[1024,768],[1366,768],[1920,1200],[2560,1080],[800,1280],[600,1024],[768,1024]];
+const ALL=[[960,540],[1024,600],[1280,720],[1280,800],[1024,768],[1366,768],[1920,1200],[2560,1080],[800,1280],[600,1024],[768,1024]];
+const sizes=process.env.SIZES?ALL.filter(([w,h])=>process.env.SIZES.split(',').includes(w+'x'+h)):ALL;
 const sim=process.argv[3]==='sim';
 for (const [w,h] of sizes) {
   const pg = await b.newPage({ viewport:{width:w,height:h} });

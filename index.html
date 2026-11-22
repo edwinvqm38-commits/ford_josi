@@ -1410,6 +1410,10 @@ svg.ic,svg.ic2,svg.tabic,.btn svg,.pill svg,.tile .t svg,.card-h svg,nav.tabs sv
 .tile .v,.num,.gauge-sub b,.stat .v,.kpi .v{font-family:var(--fnum);font-weight:600;letter-spacing:.01em}
 nav.tabs button{font-weight:600;letter-spacing:.06em}
 nav.tabs svg{width:24px;height:24px}
+/* ajustes de ancho: etiquetas compactas donde hay poco espacio */
+.gauge-sub .lbl,.trip-strip .lbl,.stat .lbl{letter-spacing:.02em;font-size:11.5px;text-transform:none}
+@media (max-width:1000px){.tile .t{letter-spacing:.05em;font-size:11px;white-space:nowrap}}
+@media (min-width:641px) and (max-width:1000px) and (orientation:portrait){.tiles .tile .t{letter-spacing:.02em;font-size:10.5px}.tiles .tile .t svg{width:15px;height:15px}}
 /* Voz: subtítulo que se ilumina palabra por palabra */
 .josi-sub{position:absolute;left:7%;right:7%;top:62%;text-align:center;font:500 17px/1.3 var(--fnt);color:rgba(255,255,255,.34);opacity:0;transition:opacity .35s ease;pointer-events:none;z-index:2}
 .josi-sub.on{opacity:1}.josi-sub em{font-style:normal;color:var(--ink);text-shadow:0 0 16px rgba(var(--acc),.5)}
