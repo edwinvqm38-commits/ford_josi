@@ -13,7 +13,7 @@
 - Vistas previas: `docs/preview-*.png` (simulador, 1024×600).
 - NO hecho aún: fondo/iluminación ambiental configurable, mapas Leaflet y colores semánticos sin tema.
 ## Bloque 3 (hecho)
-- Jerarquía del cockpit (≥1001 px, sin panel simulación): Velocidad y RPM ocupan ancho completo y cifras grandes. Con simulación activa se conserva la distribución anterior (falta espacio).
+- (Reemplazado en Bloque 6) Jerarquía del cockpit: Velocidad y RPM de ancho completo. Con simulación activa se conserva la distribución anterior (falta espacio).
 - Tipografía por tema (Luxury ligera/espaciada; Sport pesada/mayúsculas).
 - Animaciones: ajuste `anim` (off/standard/premium) vía `body[data-anim]`; `Fx.reduced()` respeta «off» y movimiento reducido; clase `body.driving` (>5 km/h) apaga animaciones decorativas. Los valores reales no se animan desde cero ni se retrasan.
 - Pendiente: count-up/barras/líneas animadas en gráficas, skeletons, Spring; vertical y 4:3 sin revisar.
@@ -26,3 +26,8 @@
 - Ya existía: dígitos animados (number-flow) en lecturas, barras con transición.
 - Medición `node tests/perf.mjs` (Chromium headless de escritorio; CPU 1× y 4× emulada; 1024×600, simulador).
 - Pendiente: skeleton/shimmer, spring, count-up en tarjetas de estadísticas, plugin Bluetooth nativo, i18n, pestañas distintas de En vivo.
+## Bloque 6 (hecho)
+- Cuadro digital (≥1001 px, sin panel de simulación): Velocidad y RPM son diales circulares de 270° (`::before` con conic-gradient y propiedad registrada `--f`, animada con transición; `--tone` da el color por umbral). Columnas 27/33/40.
+- Iluminación ambiental (`S.ambient`: off/soft/strong, defecto soft): `#ambient` con luz de borde del color del tema; se pone roja si la velocidad supera `S.speedLimit`.
+- Con panel de simulación y en <1001 px se conserva el diseño previo (tarjetas normales con barra).
+- Pendiente: diales en horizontal <1001 px y vertical, marcas/escala numérica en los diales, auto 3D, fondo configurable, editor.

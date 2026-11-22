@@ -26,6 +26,8 @@ const r = await pg.evaluate(async () => {
   { const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:0;width:300px;height:150px'; document.body.appendChild(d); const n0 = charts.length; const mk = () => { const w = document.createElement('div'); w.style.cssText = 'width:300px;height:150px'; w.innerHTML = '<canvas></canvas>'; d.appendChild(w); return w; };
     for (const lv of ['off', 'standard', 'premium']) { S.anim = lv; try { lineChart(mk(), [1, 2, 3, 4], [3, 5, 4, 6]); barChart(mk(), ['a', 'b'], [1, 2]); } catch (e) { out['gráficas ' + lv] = 'ERR ' + e.message; continue; } }
     out['gráficas se crean en los 3 niveles'] = charts.length - n0 === 6; destroyCharts(); d.remove(); S.anim = 'standard'; }
+  for (const lv of ['off', 'strong', 'soft']) { S.ambient = lv; applyTheme(); out['ambiente ' + lv] = document.body.dataset.amb === lv && !!document.getElementById('ambient'); }
+  { const t = document.createElement('div'); t.className = 'tile'; t.innerHTML = '<i class="meter"><b id="zzM"></b></i>'; document.body.appendChild(t); meter('zz', 0.5, 'info'); out['meter fija --f'] = t.style.getPropertyValue('--f') === '0.500'; t.remove(); }
   const cn = App.connected, sv = App.vals.speed; App.connected = true; App.vals.speed = 60; await new Promise(r => setTimeout(r, 200));
   out['modo conducción (>5 km/h)'] = document.body.classList.contains('driving');
   App.vals.speed = 0; await new Promise(r => setTimeout(r, 200)); out['modo conducción se apaga detenido'] = !document.body.classList.contains('driving'); App.connected = cn; App.vals.speed = sv;

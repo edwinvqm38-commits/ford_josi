@@ -1339,15 +1339,23 @@ body.night .josi-car{animation:none}
   .stat .lbl{font-size:11.5px}.stat .v{font-size:19px}
   .coach{min-height:34px;font-size:14.5px;margin-bottom:6px;padding:3px 12px}
 }
-/* Bloque 3 · jerarquía de conducción: velocidad y RPM dominan (pantallas anchas) */
+/* Bloque 6 · cuadro digital: velocidad y RPM como diales circulares (pantallas anchas, sin panel de simulación) */
+@property --f{syntax:'<number>';inherits:true;initial-value:0}
 @media (min-width:1001px){
-  .live:not(.has-sim) .tiles{grid-template-rows:1.55fr 1.1fr 1fr 1fr}
-  .live:not(.has-sim) .tiles .tile:nth-child(-n+2){grid-column:span 2}
-  .live:not(.has-sim) .tiles .tile:nth-child(1) .v{font-size:clamp(44px,9vh,80px)!important;line-height:.95;color:var(--ink-num)}
-  .live:not(.has-sim) .tiles .tile:nth-child(2) .v{font-size:clamp(28px,4.6vh,48px)!important;line-height:1}
-  .live .tiles .tile:nth-child(1){border-color:rgba(var(--acc),.28)}
+  .live:not(.has-sim){grid-template-columns:minmax(0,27fr) minmax(0,33fr) minmax(0,40fr)}
+  .live:not(.has-sim) .tiles{grid-template-rows:1.65fr 1fr 1fr}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2){position:relative;transition:--f .55s var(--ease);border-color:rgba(var(--acc),.24)}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2)::before{content:"";position:absolute;left:50%;top:50%;height:min(94%,168px);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
+    background:conic-gradient(from 225deg,rgb(var(--tone)) calc(var(--f)*270deg),rgba(255,255,255,.075) calc(var(--f)*270deg) 270deg,transparent 270deg);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 9px));mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 9px));filter:drop-shadow(0 0 7px rgba(var(--tone),.55))}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2) .t{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2) .meter{display:none}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2) .v{font-size:clamp(30px,6.4vh,56px)!important;line-height:1;color:var(--ink-num)}
+  .live:not(.has-sim) .tiles .tile:nth-child(-n+2) .u{position:absolute;left:0;right:0;bottom:clamp(6px,5%,12px);text-align:center;margin:0;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--lbl)}
 }
-@media (min-width:1001px) and (min-height:701px){.live:not(.has-sim) .tiles{grid-template-rows:1.7fr 1.1fr 1fr 1fr}}
+/* Iluminación ambiental: luz de borde que sigue al tema y avisa en rojo al pasar la velocidad deseada */
+#ambient{position:fixed;inset:0;pointer-events:none;z-index:2;box-shadow:inset 0 0 130px 8px rgba(var(--amb,var(--acc)),var(--amb-a,.16));transition:box-shadow .9s ease}
+body[data-amb=off] #ambient{display:none}body[data-amb=strong]{--amb-a:.34}body[data-amb=soft]{--amb-a:.16}
 /* Bloque 4 · tablets: las 4 tarjetas pequeñas no desbordan; vertical 7-10 pulgadas con más alto para instrumentos */
 @media (min-width:1001px){.live.has-sim .tiles .tile .v{font-size:clamp(20px,3.4vh,30px)!important}.live:not(.has-sim) .tiles .tile:nth-child(n+3) .v{font-size:clamp(20px,3.4vh,32px)!important}.live:not(.has-sim) .tiles .tile:nth-child(n+3){padding:3px 10px;gap:0}.live:not(.has-sim) .tiles .tile:nth-child(n+3) .t{font-size:11.5px}}
 @media (min-width:641px) and (max-width:1000px) and (orientation:portrait) and (min-height:700px){main.fit .live,main.fit .live.has-sim{grid-template-rows:minmax(0,1.25fr) minmax(0,1fr) auto auto}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}.tile .v{font-size:clamp(20px,2.6vh,28px)!important}.josi-car{height:36%!important}.gauge-sub b{font-size:15px}}
@@ -1474,7 +1482,7 @@ function featureAllowed(f) {
 
 /* ---------- Ajustes y unidades ---------- */
 const SPKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
-const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true, allowClearDtc: false, theme: 'estandar', anim: 'standard' };
+const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true, allowClearDtc: false, theme: 'estandar', anim: 'standard', ambient: 'soft' };
 const S_RAW = store.get(SPKEY, {});
 let S = Object.assign({}, DEFAULTS, S_RAW);
 // 3.19: la palabra «Josi» quedó apagada en equipos donde nunca se volvió a encender; se reactiva una sola vez (si el micrófono está bloqueado, el diagnóstico lo explica)
@@ -1483,7 +1491,7 @@ function saveSettings() { store.set(SPKEY, S); }
 const ACC_RGB = [76, 180, 245];
 const THEMES = { estandar: ['Estándar', '#0d1117', '#4cb4f5'], luxury: ['Luxury', '#0b0b0d', '#d9b66a'], sport: ['Sport', '#070708', '#ff4a3d'] };
 function applyTheme() {
-  const t = THEMES[S.theme] ? S.theme : 'estandar'; document.body.dataset.theme = t; document.body.dataset.anim = ['off', 'standard', 'premium'].includes(S.anim) ? S.anim : 'standard';
+  const t = THEMES[S.theme] ? S.theme : 'estandar'; document.body.dataset.theme = t; document.body.dataset.amb = ['off', 'soft', 'strong'].includes(S.ambient) ? S.ambient : 'soft'; if (!document.getElementById('ambient')) { const a = document.createElement('div'); a.id = 'ambient'; a.setAttribute('aria-hidden', 'true'); document.body.appendChild(a); } document.body.dataset.anim = ['off', 'standard', 'premium'].includes(S.anim) ? S.anim : 'standard';
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = THEMES[t][1];
   if (typeof C !== 'undefined') C.accent = THEMES[t][2];
   ACC_RGB.splice(0, 3, ...(getComputedStyle(document.body).getPropertyValue('--acc').split(',').map(Number)));
@@ -4958,7 +4966,7 @@ function setNum(id, val) {
 function meter(id, frac, tone) {
   const b = document.getElementById(id + 'M'); if (!b) return;
   b.style.width = (Math.max(0, Math.min(1, frac || 0)) * 100).toFixed(0) + '%';
-  const t = b.closest('.tile'); if (t) t.style.setProperty('--tone', TONE[tone] || TONE.info);
+  const t = b.closest('.tile'); if (t) { t.style.setProperty('--tone', TONE[tone] || TONE.info); t.style.setProperty('--f', Math.max(0, Math.min(1, frac || 0)).toFixed(3)); }
 }
 function renderLiveValues() {
   if (App.transport?.kind === 'gps') return renderGpsValues();
@@ -5487,7 +5495,7 @@ const Cloud = {
   st: store.get(CLOUDKEY, { base: {}, dels: {}, setSig: '', setTs: 0, sig: '', last: 0, user: '' }),
   tok: null, exp: 0, busy: false, tc: null, tcId: '', err: '',
   SCOPE: 'https://www.googleapis.com/auth/drive.appdata openid email',
-  SET: ['theme', 'anim', 'userName', 'botName', 'econ', 'currency', 'price', 'baseKmpl', 'goalPct', 'speedLimit', 'sensitivity', 'calib', 'companion', 'azVoice', 'azStyle', 'voicePitch', 'voiceRate', 'nightAuto', 'sounds', 'keepAwake', 'autoTrip', 'bumps'],
+  SET: ['theme', 'anim', 'ambient', 'userName', 'botName', 'econ', 'currency', 'price', 'baseKmpl', 'goalPct', 'speedLimit', 'sensitivity', 'calib', 'companion', 'azVoice', 'azStyle', 'voicePitch', 'voiceRate', 'nightAuto', 'sounds', 'keepAwake', 'autoTrip', 'bumps'],
   get native() { return typeof NATIVE !== 'undefined' && NATIVE; },
   get signed() { return !!this.st.user; },
   get valid() { return !!this.tok && Date.now() < this.exp - 60000; },
@@ -5632,6 +5640,7 @@ function viewSettings() {
     <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>${APP_VER}</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Tema visual <span class="d">Cambia colores e iluminación sin reiniciar GPS ni OBD2</span></span><select id="sTheme">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}" ${S.theme === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
+    <div class="f"><span>Iluminación ambiental <span class="d">Luz suave en los bordes de la pantalla; se pone roja si pasas tu velocidad deseada</span></span><select id="sAmb">${[['off', 'Apagada'], ['soft', 'Suave'], ['strong', 'Intensa']].map(([k, n]) => `<option value="${k}" ${(S.ambient || 'soft') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="f"><span>Animaciones <span class="d">Premium: entradas más ricas. Se reducen solas al conducir y con «movimiento reducido»</span></span><select id="sAnim">${[['off', 'Desactivadas'], ['standard', 'Estándar'], ['premium', 'Premium']].map(([k, n]) => `<option value="${k}" ${(S.anim || 'standard') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
     <div class="f"><span>Mantener la pantalla encendida</span><input type="checkbox" id="sWake" ${S.keepAwake ? 'checked' : ''}></div>
@@ -5845,6 +5854,7 @@ function bindSettings() {
   $('#sAuto').onchange = e => { S.autoTrip = e.target.checked; saveSettings(); };
   $('#sSnd').onchange = e => { S.sounds = e.target.checked; saveSettings(); if (S.sounds) Snd.play('tab'); };
   $('#sTheme').onchange = e => { S.theme = e.target.value; saveSettings(); applyTheme(); };
+  $('#sAmb').onchange = e => { S.ambient = e.target.value; saveSettings(); applyTheme(); };
   $('#sAnim').onchange = e => { S.anim = e.target.value; saveSettings(); applyTheme(); };
   $('#sNight').onchange = e => { S.nightAuto = e.target.checked; saveSettings(); Snd.night(); };
   $('#sWake').onchange = e => { S.keepAwake = e.target.checked; saveSettings(); if (S.keepAwake && App.connected) requestWake(); else releaseWake(); };
@@ -5928,7 +5938,7 @@ function frame(ts) {
     if (App.trip) updateTripBar();
   }
   Wave.draw();
-  { const dr = ((App.connected && App.vals && App.vals.speed) || 0) > 5; if (dr !== App._drv) { App._drv = dr; document.body.classList.toggle('driving', dr); } }
+  { const dr = ((App.connected && App.vals && App.vals.speed) || 0) > 5; if (dr !== App._drv) { App._drv = dr; document.body.classList.toggle('driving', dr); } const over = !!(S.speedLimit && App.connected && App.vals && App.vals.speed > S.speedLimit); if (over !== App._over) { App._over = over; document.body.style.setProperty('--amb', over ? '224,96,96' : ''); if (!over) document.body.style.removeProperty('--amb'); } }
   const tb = document.getElementById('talkBtn'); if (tb) tb.classList.toggle('on', !!(Talk.wakeActive || App.listening || Live.on));
   requestAnimationFrame(frame);
 }
