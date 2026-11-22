@@ -1446,7 +1446,7 @@ function featureAllowed(f) {
 
 /* ---------- Ajustes y unidades ---------- */
 const SPKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
-const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true };
+const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true, allowClearDtc: false };
 const S_RAW = store.get(SPKEY, {});
 let S = Object.assign({}, DEFAULTS, S_RAW);
 // 3.19: la palabra «Josi» quedó apagada en equipos donde nunca se volvió a encender; se reactiva una sola vez (si el micrófono está bloqueado, el diagnóstico lo explica)
@@ -2169,7 +2169,9 @@ class ELM327 {
     }
     return [...new Set(codes)];
   }
-  async clearDTCs() { const r = await this.send('04', 5000); return ELM327.ok(r, '44'); }
+  /* Solo consulta: modos de escritura/borrado quedan bloqueados salvo permiso explícito (allowClearDtc). */
+  static isReadOnly(cmd) { const c = String(cmd).replace(/\s+/g, '').toUpperCase(); return c.startsWith('AT') || /^(01|02|03|07|09|0A)([0-9A-F]{2})?$/.test(c); }
+  async clearDTCs() { if (!S.allowClearDtc) return false; const r = await this.send('04', 5000); return ELM327.ok(r, '44'); }
 }
 
 /* =====================================================================
@@ -5370,7 +5372,7 @@ function viewDiag() {
       <p class="muted" style="font-size:13px">Para probar en la cochera: con el <b>contacto en ON</b> (sin arrancar) puedes leer voltaje y códigos; con el <b>motor encendido</b> verás RPM, temperatura y gasto en ralentí. Abre la puerta de la cochera si enciendes el motor.</p>
     </section>
     <section class="card"><div class="card-h">Códigos de falla (check engine)</div>
-      <div class="actions" style="justify-content:flex-start;margin-top:0"><button class="btn primary" id="dRead" ${App.connected ? '' : 'disabled'}>Leer códigos</button><button class="btn danger" id="dClear" ${App.connected ? '' : 'disabled'}>Borrar códigos</button></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:0"><button class="btn primary" id="dRead" ${App.connected ? '' : 'disabled'}>Leer códigos</button>${S.allowClearDtc ? `<button class="btn danger" id="dClear" ${App.connected ? '' : 'disabled'}>Borrar códigos</button>` : ''}</div>
       <div id="dDtc">${App.diag.dtc || '<p class="muted">Toca «Leer códigos».</p>'}</div>
       ${sim ? `<div class="card-h" style="margin-top:14px">Simular una falla</div><div class="actions" style="justify-content:flex-start;margin:0"><button class="btn small" data-fault="P0171">P0171 mezcla pobre</button><button class="btn small" data-fault="P0299">P0299 turbo bajo</button><button class="btn small" data-fault="P0420">P0420 catalizador</button></div>` : ''}
     </section>
@@ -5395,7 +5397,7 @@ function renderDiagLive() {
 function bindDiag() {
   const c = $('#console'); for (const l of App.log.slice(-200)) appendConsole(c, l);
   $('#logPoll').onchange = e => { App.logPoll = e.target.checked; };
-  const send = async () => { const v = $('#cmdIn').value.trim().toUpperCase(); if (!v || !App.elm) return; $('#cmdIn').value = ''; await App.elm.send(v, 5000); };
+  const send = async () => { const v = $('#cmdIn').value.trim().toUpperCase(); if (!v || !App.elm) return; if (!ELM327.isReadOnly(v)) { toast('Solo comandos de consulta (AT y modos 01, 02, 03, 07, 09, 0A)'); return; } $('#cmdIn').value = ''; await App.elm.send(v, 5000); };
   $('#cmdGo').onclick = send; $('#cmdIn').onkeydown = e => { if (e.key === 'Enter') send(); };
   $$('[data-fault]').forEach(b => b.onclick = () => { const m = App.model; if (!m.dtcs.includes(b.dataset.fault)) m.dtcs.push(b.dataset.fault); toast('Falla simulada: ' + b.dataset.fault + '. Ahora toca «Leer códigos».'); });
   $('#dRead').onclick = async () => {
@@ -5408,7 +5410,7 @@ function bindDiag() {
       : '<div class="check ok"><span class="ci">✓</span><div>Sin códigos de falla guardados.</div></div>';
     box.innerHTML = App.diag.dtc;
   };
-  $('#dClear').onclick = async () => {
+  if ($('#dClear')) $('#dClear').onclick = async () => {
     if (!await confirmBox('Borrar códigos de falla', 'Hazlo con el <b>contacto en ON y el motor apagado</b>. Se apaga la luz de check engine y se reinician los monitores de emisiones (el auto tarda unos días en volver a «listo»). No repara la falla.', 'Borrar códigos', true)) return;
     const ok = await App.elm.clearDTCs(); toast(ok ? 'Códigos borrados' : 'El auto no aceptó el borrado (prueba con el motor apagado y contacto en ON)');
     App.diag.dtc = ''; if (ok) $('#dDtc').innerHTML = '<p class="muted">Códigos borrados. Vuelve a leer para confirmar.</p>';
@@ -5578,6 +5580,7 @@ function viewSettings() {
     <div class="f"><span>Meta: mejorar un… (%) <span class="d">Meta actual: ${Units.fmtEcon(goalKmpl())} ${Units.econLabel()}</span></span><input type="number" id="sGoal" min="1" max="50" step="1" value="${S.goalPct}"></div>
     <div class="f"><span>Velocidad máxima deseada (${Units.speedLabel()}) <span class="d">Sobre esta velocidad baja el puntaje</span></span><input type="number" id="sLim" min="30" max="200" value="${Math.round(Units.speed(S.speedLimit))}"></div>
     <div class="f"><span>Exigencia del puntaje</span><select id="sSens">${[['relajado', 'Relajada'], ['normal', 'Normal'], ['estricto', 'Estricta']].map(([k, l]) => `<option value="${k}" ${S.sensitivity === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="f"><span>Permitir borrar códigos de falla <span class="d">Desactivado por defecto. Envía una orden de borrado al auto; úsalo solo estacionado</span></span><input type="checkbox" id="sClrDtc" ${S.allowClearDtc ? 'checked' : ''}></div>
     <div class="f"><span>Iniciar y terminar viajes automáticamente <span class="d">Empieza al moverte; termina tras 1 min con el motor apagado</span></span><input type="checkbox" id="sAuto" ${S.autoTrip ? 'checked' : ''}></div>
     <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>${APP_VER}</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
@@ -5789,6 +5792,7 @@ function bindSettings() {
   $('#sPrice').onchange = e => { S.price = Math.max(0, parseFloat(e.target.value) || 0); saveSettings(); toast('Precio guardado'); };
   $('#sLim').onchange = e => { const v = parseFloat(e.target.value); if (v > 0) { S.speedLimit = Units.imperial ? v * MI : v; saveSettings(); } };
   $('#sSens').onchange = e => { S.sensitivity = e.target.value; saveSettings(); };
+  $('#sClrDtc').onchange = e => { S.allowClearDtc = e.target.checked; saveSettings(); };
   $('#sAuto').onchange = e => { S.autoTrip = e.target.checked; saveSettings(); };
   $('#sSnd').onchange = e => { S.sounds = e.target.checked; saveSettings(); if (S.sounds) Snd.play('tab'); };
   $('#sNight').onchange = e => { S.nightAuto = e.target.checked; saveSettings(); Snd.night(); };

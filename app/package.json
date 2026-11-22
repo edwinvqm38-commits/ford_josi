@@ -1,6 +1,6 @@
 {
   "name": "josi-app",
-  "version": "3.13.0",
+  "version": "4.2.0",
   "private": true,
   "scripts": { "sync": "cap sync android" },
   "dependencies": {
