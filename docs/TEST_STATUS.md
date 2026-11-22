@@ -16,3 +16,4 @@ Bloque 7: `node tests/layout.mjs` 11 tamaños en modo real y en simulación (pan
 Bloque 8: cambio solo de color/fondo; no se repitió `layout.mjs` (no altera dimensiones). Revisión visual en capturas 1280×800 de los 5 temas.
 
 Bloque 9: voz forzada (Voice.speaking + App.josiSays) verificada en captura; no con audio real.
+Bloque 9: `layout.mjs` 11 tamaños × (real, simulación) sin hallazgos tras corregir 3 recortes de etiquetas causados por la fuente nueva.
