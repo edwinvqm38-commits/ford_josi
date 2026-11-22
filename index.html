@@ -13,11 +13,18 @@
   --ink:#eef3f8;--ink2:#b4c2d1;--muted:#7d8b9b;--grid:#232d39;--base:#2e3a48;
   --border:rgba(150,200,240,.10);--accent:#4cb4f5;
   --good:#0ca30c;--warn:#fab219;--serious:#ec835a;--crit:#d03b3b;
-  --r:16px;color-scheme:dark;--acc:76,180,245;--glow:#13263a;--on-acc:#06131d;
+  --r:16px;color-scheme:dark;--acc:76,180,245;--glow:#13263a;--on-acc:#06131d;--tint:40,104,160;--bg1:#0b1017;--bg2:#090d13;--c1:#1a2430;--c2:#141b24;--c3:#111820;
 }
 /* Motor de temas: solo variables; no toca la lógica ni los servicios (GPS/BT/OBD2) */
-body[data-theme=luxury]{--page:#0b0b0d;--surface:#16161b;--s2:#1d1d24;--s3:#272730;--grid:#272730;--base:#35353f;--accent:#d9b66a;--acc:217,182,106;--glow:#2a2418;--on-acc:#17110a;--ink:#f4efe6;--ink2:#c3bcae;--muted:#8a8478;--border:rgba(217,182,106,.14);--lbl:#b2aa9a}
-body[data-theme=sport]{--page:#070708;--surface:#121214;--s2:#18181b;--s3:#222226;--grid:#222226;--base:#33333a;--accent:#ff4a3d;--acc:255,74,61;--glow:#2b0d0b;--on-acc:#fff;--ink:#f5f5f6;--ink2:#bdbdc4;--muted:#85858f;--border:rgba(255,74,61,.16);--lbl:#aeaeb7}
+body[data-theme=luxury]{--page:#0b0b0d;--surface:#16161b;--s2:#1d1d24;--s3:#272730;--grid:#272730;--base:#35353f;--accent:#d9b66a;--acc:217,182,106;--glow:#2a2418;--on-acc:#17110a;--ink:#f4efe6;--ink2:#c3bcae;--muted:#8a8478;--border:rgba(217,182,106,.14);--lbl:#b2aa9a;--tint:130,98,40;--bg1:#0d0c0b;--bg2:#09090a;--c1:#1f1e22;--c2:#18181c;--c3:#121215}
+body[data-theme=sport]{--page:#070708;--surface:#121214;--s2:#18181b;--s3:#222226;--grid:#222226;--base:#33333a;--accent:#ff4a3d;--acc:255,74,61;--glow:#2b0d0b;--on-acc:#fff;--ink:#f5f5f6;--ink2:#bdbdc4;--muted:#85858f;--border:rgba(255,74,61,.16);--lbl:#aeaeb7;--tint:150,28,22;--bg1:#0b0809;--bg2:#070607;--c1:#1d1b1f;--c2:#151416;--c3:#0f0e10}
+body[data-theme=classic]{--page:#0f0b08;--surface:#1b1511;--s2:#241c16;--s3:#2e241c;--grid:#2e241c;--base:#43352a;--accent:#f0a240;--acc:240,162,64;--glow:#2e1c0c;--on-acc:#1a0f04;--ink:#f6ead8;--ink2:#cdb99d;--muted:#8f7c64;--border:rgba(240,162,64,.16);--lbl:#bda684;--tint:150,84,24;--bg1:#0e0a07;--bg2:#080605;--c1:#241b14;--c2:#1b1410;--c3:#140e0a}
+body[data-theme=nightdrive]{--page:#070914;--surface:#101328;--s2:#171b36;--s3:#20254a;--grid:#20254a;--base:#323a6e;--accent:#a58bff;--acc:165,139,255;--glow:#1b1047;--on-acc:#0e0830;--ink:#eef0ff;--ink2:#b8bde6;--muted:#7b82b5;--border:rgba(165,139,255,.18);--lbl:#a4abda;--tint:76,48,170;--bg1:#080a18;--bg2:#05060f;--c1:#181c3a;--c2:#12162e;--c3:#0d1024}
+/* Fondos configurables (independientes del tema) */
+body[data-bg=plain]{background:var(--bg2) fixed}
+body[data-bg=carbon]{background:radial-gradient(1100px 520px at 50% -18%,rgba(var(--tint),.22) 0%,transparent 64%),repeating-linear-gradient(45deg,rgba(255,255,255,.028) 0 2px,transparent 2px 6px),repeating-linear-gradient(-45deg,rgba(255,255,255,.02) 0 2px,transparent 2px 6px),var(--bg2) fixed}
+body[data-bg=grid]{background:radial-gradient(1100px 520px at 50% -18%,rgba(var(--tint),.22) 0%,transparent 64%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/44px 44px,linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/44px 44px,var(--bg2) fixed}
+body[data-bg=aurora]{background:radial-gradient(800px 420px at 15% 0%,rgba(var(--acc),.26) 0%,transparent 62%),radial-gradient(700px 420px at 95% 100%,rgba(var(--tint),.38) 0%,transparent 60%),var(--bg1) fixed}
 html,body{margin:0;height:100%;background:radial-gradient(1200px 500px at 15% -10%,var(--glow) 0%,var(--page) 60%) fixed;color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{display:flex;flex-direction:column;overflow:hidden;-webkit-tap-highlight-color:transparent}
 button,select,input{font:inherit;color:inherit}
@@ -933,7 +940,7 @@ html,body{font-family:var(--fnt);letter-spacing:-.005em;-webkit-font-smoothing:a
 
 :root{--r:20px;--sh:0 10px 28px -12px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.25);--ease:cubic-bezier(.22,.8,.24,1)}
 body{background:radial-gradient(900px 480px at 12% -8%,#17304a 0%,transparent 62%),radial-gradient(700px 420px at 100% 110%,#122233 0%,transparent 60%),var(--page) fixed}
-.card,.tile{border-radius:var(--r);background:linear-gradient(165deg,#1a2430 0%,#141b24 55%,#111820 100%);border:1px solid rgba(150,200,240,.11);box-shadow:var(--sh),inset 0 1px 0 rgba(190,225,255,.05)}
+.card,.tile{border-radius:var(--r);background:linear-gradient(165deg,var(--c1) 0%,var(--c2) 55%,var(--c3) 100%);border:1px solid var(--border);box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.05)}
 .card-h{color:#8cc3ea;font-size:12px;letter-spacing:1.1px}
 .card-h .ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none;opacity:.9}
 .btn,.pill{transition:transform .16s var(--ease),background .2s,border-color .2s,box-shadow .2s;border-radius:14px}
@@ -966,7 +973,7 @@ nav.tabs button.on{color:#7cc8f8}
 .goal-bar{height:10px;border-radius:5px}.goal-bar i{background:linear-gradient(90deg,#14a14a,#5fd39a)}
 .bar{border-radius:12px}.bar-fill{border-radius:12px}
 .coach{border-radius:16px;background:linear-gradient(90deg,rgba(26,36,48,.95),rgba(20,27,36,.95));box-shadow:var(--sh)}
-.josi-card{background:radial-gradient(120% 90% at 50% 38%,rgba(var(--acc),.13),transparent 62%),linear-gradient(165deg,#1a2430,#111820)}
+.josi-card{background:radial-gradient(120% 90% at 50% 38%,rgba(var(--acc),.13),transparent 62%),linear-gradient(165deg,var(--c1),var(--c3))}
 .josi-car{filter:drop-shadow(0 10px 14px rgba(0,0,0,.65)) drop-shadow(0 0 22px rgba(var(--acc),.28))}
 .hero img{filter:drop-shadow(0 18px 30px rgba(0,0,0,.6)) drop-shadow(0 0 40px rgba(var(--acc),.25))}
 .sheet{border-radius:24px;box-shadow:0 30px 80px -20px #000;animation:sheetIn .35s var(--ease)}
@@ -1261,9 +1268,9 @@ body.night .josi-car,body.night .hero img{filter:drop-shadow(0 10px 14px rgba(0,
 
 /* ===== Visual 4 · instrumentos: superficies quietas, un solo acento, el movimiento vive en el escenario de Josi ===== */
 :root{--r:20px;--r2:14px;--line:rgba(255,255,255,.07);--ink-num:#f3f7fb;--lbl:#9fb1c2}
-body{background:radial-gradient(1100px 520px at 50% -18%,rgba(40,104,160,.30) 0%,transparent 64%),linear-gradient(180deg,#0b1017 0%,#090d13 100%) fixed}
-.card{background:linear-gradient(180deg,#151c25,#11171f);border:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 14px 34px -22px #000}
-.tile{background:#121921;border:1px solid var(--line);border-radius:var(--r2);box-shadow:none}
+body{background:radial-gradient(1100px 520px at 50% -18%,rgba(var(--tint),.30) 0%,transparent 64%),linear-gradient(180deg,var(--bg1) 0%,var(--bg2) 100%) fixed}
+.card{background:linear-gradient(180deg,var(--c2),var(--c3));border:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 14px 34px -22px #000}
+.tile{background:var(--c3);border:1px solid var(--line);border-radius:var(--r2);box-shadow:none}
 .tile::after,.gauge-card::after,.effort-card::after{display:none!important}
 .tile .v,#gVal{text-shadow:none;color:var(--ink-num)}
 .num,.tile .v,#gVal,.stat .v,.kpi .v,.gauge-sub b,.josi-foot b{font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1}
@@ -1496,16 +1503,16 @@ function featureAllowed(f) {
 
 /* ---------- Ajustes y unidades ---------- */
 const SPKEY = 'ecodrive.settings.v1', TKEY = 'ecodrive.trips.v1';
-const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true, allowClearDtc: false, theme: 'estandar', anim: 'standard', ambient: 'soft' };
+const DEFAULTS = { azKey: '', azRegion: '', azVoice: 'es-PE-AlexNeural', azStyle: 'sereno', aiKey: '', aiModel: 'gemini-flash-lite-latest', wake: true, userName: 'Edwin', botName: 'Josi', companion: true, voiceListen: true, autoConnect: true, bumps: true, lastBaud: 0, voice: true, voiceName: '', voicePitch: 0.85, voiceRate: 1.0, v: 2, baseKmpl: 6.5, goalPct: 10, econ: 'kml', currency: '$', price: 0, speedLimit: 100, sensitivity: 'normal', calib: 1, multiPid: false, autoTrip: true, keepAwake: true, welcomed: false, baud: 'auto', tankMark: null, sounds: true, nightAuto: true, allowClearDtc: false, theme: 'estandar', anim: 'standard', ambient: 'soft', bg: 'default' };
 const S_RAW = store.get(SPKEY, {});
 let S = Object.assign({}, DEFAULTS, S_RAW);
 // 3.19: la palabra «Josi» quedó apagada en equipos donde nunca se volvió a encender; se reactiva una sola vez (si el micrófono está bloqueado, el diagnóstico lo explica)
 if (!S.wakeFix319) { S.wakeFix319 = true; if (S.wake === false) S.wake = true; try { store.set(SPKEY, S); } catch (e) {} }
 function saveSettings() { store.set(SPKEY, S); }
 const ACC_RGB = [76, 180, 245];
-const THEMES = { estandar: ['Estándar', '#0d1117', '#4cb4f5'], luxury: ['Luxury', '#0b0b0d', '#d9b66a'], sport: ['Sport', '#070708', '#ff4a3d'] };
+const THEMES = { estandar: ['Estándar', '#0d1117', '#4cb4f5'], luxury: ['Luxury', '#0b0b0d', '#d9b66a'], sport: ['Sport', '#070708', '#ff4a3d'], classic: ['Classic', '#0f0b08', '#f0a240'], nightdrive: ['Night Drive', '#070914', '#a58bff'] };
 function applyTheme() {
-  const t = THEMES[S.theme] ? S.theme : 'estandar'; document.body.dataset.theme = t; document.body.dataset.amb = ['off', 'soft', 'strong'].includes(S.ambient) ? S.ambient : 'soft'; if (!document.getElementById('ambient')) { const a = document.createElement('div'); a.id = 'ambient'; a.setAttribute('aria-hidden', 'true'); document.body.appendChild(a); } document.body.dataset.anim = ['off', 'standard', 'premium'].includes(S.anim) ? S.anim : 'standard';
+  const t = THEMES[S.theme] ? S.theme : 'estandar'; document.body.dataset.theme = t; document.body.dataset.bg = ['default', 'plain', 'carbon', 'grid', 'aurora'].includes(S.bg) ? S.bg : 'default'; document.body.dataset.amb = ['off', 'soft', 'strong'].includes(S.ambient) ? S.ambient : 'soft'; if (!document.getElementById('ambient')) { const a = document.createElement('div'); a.id = 'ambient'; a.setAttribute('aria-hidden', 'true'); document.body.appendChild(a); } document.body.dataset.anim = ['off', 'standard', 'premium'].includes(S.anim) ? S.anim : 'standard';
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = THEMES[t][1];
   if (typeof C !== 'undefined') C.accent = THEMES[t][2];
   ACC_RGB.splice(0, 3, ...(getComputedStyle(document.body).getPropertyValue('--acc').split(',').map(Number)));
@@ -4976,7 +4983,7 @@ function coachMsg(d) {
   return { tone: 'good', icon: '✓', text: 'Ritmo constante: así gastas menos.' };
 }
 /* ---------- Visual 2.0: dígitos que ruedan + barritas de nivel ---------- */
-const TONE = { good: '95,211,154', info: '76,180,245', warn: '240,180,70', crit: '224,96,96' };
+const TONE = { good: '95,211,154', get info() { return ACC_RGB.join(','); }, warn: '240,180,70', crit: '224,96,96' };
 function setNum(id, val) {
   const e = document.getElementById(id); if (!e) return;
   if (val == null || !isFinite(val)) { if (e._nf) { e._nf = null; e._lv = null; } if (e.textContent !== '—') e.textContent = '—'; return; }
@@ -5518,7 +5525,7 @@ const Cloud = {
   st: store.get(CLOUDKEY, { base: {}, dels: {}, setSig: '', setTs: 0, sig: '', last: 0, user: '' }),
   tok: null, exp: 0, busy: false, tc: null, tcId: '', err: '',
   SCOPE: 'https://www.googleapis.com/auth/drive.appdata openid email',
-  SET: ['theme', 'anim', 'ambient', 'userName', 'botName', 'econ', 'currency', 'price', 'baseKmpl', 'goalPct', 'speedLimit', 'sensitivity', 'calib', 'companion', 'azVoice', 'azStyle', 'voicePitch', 'voiceRate', 'nightAuto', 'sounds', 'keepAwake', 'autoTrip', 'bumps'],
+  SET: ['theme', 'anim', 'ambient', 'bg', 'userName', 'botName', 'econ', 'currency', 'price', 'baseKmpl', 'goalPct', 'speedLimit', 'sensitivity', 'calib', 'companion', 'azVoice', 'azStyle', 'voicePitch', 'voiceRate', 'nightAuto', 'sounds', 'keepAwake', 'autoTrip', 'bumps'],
   get native() { return typeof NATIVE !== 'undefined' && NATIVE; },
   get signed() { return !!this.st.user; },
   get valid() { return !!this.tok && Date.now() < this.exp - 60000; },
@@ -5663,6 +5670,7 @@ function viewSettings() {
     <div class="f"><span>Versión de la app <span class="d">Si no coincide con la última, recarga la página</span></span><b>${APP_VER}</b></div>
     <div class="f"><span>Sonidos suaves al tocar <span class="d">Un «tic» discreto en botones y pestañas</span></span><input type="checkbox" id="sSnd" ${S.sounds ? 'checked' : ''}></div>
     <div class="f"><span>Tema visual <span class="d">Cambia colores e iluminación sin reiniciar GPS ni OBD2</span></span><select id="sTheme">${Object.entries(THEMES).map(([k, v]) => `<option value="${k}" ${S.theme === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
+    <div class="f"><span>Fondo <span class="d">Textura detrás del cockpit; toma el color del tema</span></span><select id="sBg">${[['default', 'Degradado'], ['plain', 'Liso'], ['carbon', 'Fibra de carbono'], ['grid', 'Cuadrícula'], ['aurora', 'Aurora']].map(([k, n]) => `<option value="${k}" ${(S.bg || 'default') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="f"><span>Iluminación ambiental <span class="d">Luz suave en los bordes de la pantalla; se pone roja si pasas tu velocidad deseada</span></span><select id="sAmb">${[['off', 'Apagada'], ['soft', 'Suave'], ['strong', 'Intensa']].map(([k, n]) => `<option value="${k}" ${(S.ambient || 'soft') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="f"><span>Animaciones <span class="d">Premium: entradas más ricas. Se reducen solas al conducir y con «movimiento reducido»</span></span><select id="sAnim">${[['off', 'Desactivadas'], ['standard', 'Estándar'], ['premium', 'Premium']].map(([k, n]) => `<option value="${k}" ${(S.anim || 'standard') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="f"><span>Modo noche automático <span class="d">De 7 pm a 6 am baja el brillo y suaviza los colores</span></span><input type="checkbox" id="sNight" ${S.nightAuto ? 'checked' : ''}></div>
@@ -5877,6 +5885,7 @@ function bindSettings() {
   $('#sAuto').onchange = e => { S.autoTrip = e.target.checked; saveSettings(); };
   $('#sSnd').onchange = e => { S.sounds = e.target.checked; saveSettings(); if (S.sounds) Snd.play('tab'); };
   $('#sTheme').onchange = e => { S.theme = e.target.value; saveSettings(); applyTheme(); };
+  $('#sBg').onchange = e => { S.bg = e.target.value; saveSettings(); applyTheme(); };
   $('#sAmb').onchange = e => { S.ambient = e.target.value; saveSettings(); applyTheme(); };
   $('#sAnim').onchange = e => { S.anim = e.target.value; saveSettings(); applyTheme(); };
   $('#sNight').onchange = e => { S.nightAuto = e.target.checked; saveSettings(); Snd.night(); };

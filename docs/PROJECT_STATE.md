@@ -34,3 +34,8 @@
 - Escala en los diales (`dialSVG`): marcas cada 10 km/h y 500 rpm, números cada 40 km/h y 2000 rpm (solo si alto ≥740 px), zona roja de RPM desde 5500. Velocidad convertida a la unidad elegida.
 - El panel del simulador ahora flota (≥1001 px y alto ≥561): el cockpit se ve igual con y sin simulación.
 - Pendiente: diales en <1001 px y vertical; auto 3D; fondo configurable; editor.
+## Bloque 8 (hecho)
+- Temas nuevos: Classic (ámbar/marrón cálido) y Night Drive (violeta). Ahora 5 temas: Estándar, Luxury, Sport, Classic, Night Drive.
+- Los temas retintan también fondo y tarjetas (`--bg1/--bg2/--tint`, `--c1/--c2/--c3`); `TONE.info` sigue al acento.
+- Fondos configurables (`S.bg`): Degradado, Liso, Fibra de carbono, Cuadrícula, Aurora. Ajustes > Fondo.
+- Pendiente: tarjeta de Josi aún con leve tinte azul en algunos temas; diales <1001 px y vertical; modo diurno real por tema; editor; 3D.

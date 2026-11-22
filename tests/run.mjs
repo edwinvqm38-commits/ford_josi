@@ -17,7 +17,7 @@ const r = await pg.evaluate(async () => {
   out['clearDTCs bloqueado por defecto'] = (await e.clearDTCs()) === false && !sent;
   S.allowClearDtc = true; out['clearDTCs con permiso'] = (await e.clearDTCs()) === true && sent; S.allowClearDtc = false;
   out['defecto allowClearDtc=false'] = DEFAULTS.allowClearDtc === false;
-  const sim = App.transport; for (const th of ['luxury', 'sport', 'estandar']) { S.theme = th; applyTheme(); out['tema ' + th] = document.body.dataset.theme === th && getComputedStyle(document.body).getPropertyValue('--accent').trim() === THEMES[th][2]; }
+  const sim = App.transport; for (const th of ['luxury', 'sport', 'classic', 'nightdrive', 'estandar']) { S.theme = th; applyTheme(); out['tema ' + th] = document.body.dataset.theme === th && getComputedStyle(document.body).getPropertyValue('--accent').trim() === THEMES[th][2]; }
   out['cambio de tema no toca el transporte'] = App.transport === sim;
   for (const lv of ['off', 'premium', 'standard']) { S.anim = lv; applyTheme(); out['animación ' + lv] = document.body.dataset.anim === lv && (lv !== 'off' || Fx.reduced() === true); }
   S.anim = 'off'; out['gráficas sin animar en off'] = chartAnim('bar') === false;
@@ -28,6 +28,7 @@ const r = await pg.evaluate(async () => {
     out['gráficas se crean en los 3 niveles'] = charts.length - n0 === 6; destroyCharts(); d.remove(); S.anim = 'standard'; }
   for (const lv of ['off', 'strong', 'soft']) { S.ambient = lv; applyTheme(); out['ambiente ' + lv] = document.body.dataset.amb === lv && !!document.getElementById('ambient'); }
   { const t = document.createElement('div'); t.className = 'tile'; t.innerHTML = '<i class="meter"><b id="zzM"></b></i>'; document.body.appendChild(t); meter('zz', 0.5, 'info'); out['meter fija --f'] = t.style.getPropertyValue('--f') === '0.500'; t.remove(); }
+  for (const bg of ['plain', 'carbon', 'grid', 'aurora', 'default']) { S.bg = bg; applyTheme(); out['fondo ' + bg] = document.body.dataset.bg === bg; }
   const cn = App.connected, sv = App.vals.speed; App.connected = true; App.vals.speed = 60; await new Promise(r => setTimeout(r, 200));
   out['modo conducción (>5 km/h)'] = document.body.classList.contains('driving');
   App.vals.speed = 0; await new Promise(r => setTimeout(r, 200)); out['modo conducción se apaga detenido'] = !document.body.classList.contains('driving'); App.connected = cn; App.vals.speed = sv;
