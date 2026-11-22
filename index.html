@@ -6148,7 +6148,7 @@ const Splash = {
   }
 };
 function boot() {
-  Splash.run();
+  Splash.run(); document.body.classList.toggle('idle', !App.connState || App.connState === 'off');
   $$('#tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
   document.addEventListener('pointerdown', e => { const t = e.target.closest && e.target.closest('button,.pill,.item,summary,.seg button'); if (!t || t.disabled) return; if (!t.closest('#tabs')) Snd.play('tick'); }, true);
   applyTheme(); Snd.night(); setInterval(() => Snd.night(), 300000);
