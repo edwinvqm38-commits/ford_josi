@@ -17,6 +17,8 @@ const r = await pg.evaluate(async () => {
   out['clearDTCs bloqueado por defecto'] = (await e.clearDTCs()) === false && !sent;
   S.allowClearDtc = true; out['clearDTCs con permiso'] = (await e.clearDTCs()) === true && sent; S.allowClearDtc = false;
   out['defecto allowClearDtc=false'] = DEFAULTS.allowClearDtc === false;
+  const sim = App.transport; for (const th of ['luxury', 'sport', 'estandar']) { S.theme = th; applyTheme(); out['tema ' + th] = document.body.dataset.theme === th && getComputedStyle(document.body).getPropertyValue('--accent').trim() === THEMES[th][2]; }
+  out['cambio de tema no toca el transporte'] = App.transport === sim;
   return out;
 });
 let fail = 0; for (const [k, v] of Object.entries(r)) { console.log(v === true ? 'OK  ' : 'FAIL', k, v === true ? '' : v); if (v !== true) fail++; }
