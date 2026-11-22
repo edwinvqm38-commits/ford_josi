@@ -20,6 +20,12 @@ const r = await pg.evaluate(async () => {
   const sim = App.transport; for (const th of ['luxury', 'sport', 'estandar']) { S.theme = th; applyTheme(); out['tema ' + th] = document.body.dataset.theme === th && getComputedStyle(document.body).getPropertyValue('--accent').trim() === THEMES[th][2]; }
   out['cambio de tema no toca el transporte'] = App.transport === sim;
   for (const lv of ['off', 'premium', 'standard']) { S.anim = lv; applyTheme(); out['animación ' + lv] = document.body.dataset.anim === lv && (lv !== 'off' || Fx.reduced() === true); }
+  S.anim = 'off'; out['gráficas sin animar en off'] = chartAnim('bar') === false;
+  S.anim = 'standard'; out['gráficas estándar'] = chartAnim('bar').duration === 450;
+  S.anim = 'premium'; out['gráficas premium: línea progresiva'] = typeof chartAnim('line', 10).x.delay === 'function' && chartAnim('bar').duration === 900; S.anim = 'standard';
+  { const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:0;width:300px;height:150px'; document.body.appendChild(d); const n0 = charts.length; const mk = () => { const w = document.createElement('div'); w.style.cssText = 'width:300px;height:150px'; w.innerHTML = '<canvas></canvas>'; d.appendChild(w); return w; };
+    for (const lv of ['off', 'standard', 'premium']) { S.anim = lv; try { lineChart(mk(), [1, 2, 3, 4], [3, 5, 4, 6]); barChart(mk(), ['a', 'b'], [1, 2]); } catch (e) { out['gráficas ' + lv] = 'ERR ' + e.message; continue; } }
+    out['gráficas se crean en los 3 niveles'] = charts.length - n0 === 6; destroyCharts(); d.remove(); S.anim = 'standard'; }
   const cn = App.connected, sv = App.vals.speed; App.connected = true; App.vals.speed = 60; await new Promise(r => setTimeout(r, 200));
   out['modo conducción (>5 km/h)'] = document.body.classList.contains('driving');
   App.vals.speed = 0; await new Promise(r => setTimeout(r, 200)); out['modo conducción se apaga detenido'] = !document.body.classList.contains('driving'); App.connected = cn; App.vals.speed = sv;

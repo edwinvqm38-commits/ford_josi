@@ -21,3 +21,8 @@
 - Matriz de tamaños `node tests/layout.mjs [carpeta] [sim]`: 960×540, 1024×600, 1280×720, 1280×800, 1024×768, 1366×768, 1920×1200, 2560×1080, 800×1280, 600×1024, 768×1024. Detecta scroll horizontal, elementos fuera de pantalla y texto de tarjetas desbordado. Estado: sin hallazgos en modo real ni simulación.
 - Correcciones: tarjetas pequeñas del cockpit (≥1001 px) sin recorte; vertical 641–1000 px: tarjetas en 3×2, auto de Josi sin recortar, más alto para instrumentos; en simulación a 1280×720 sin recorte.
 - Pendiente: pestañas en alturas ≤560 px (960×540) se ven poco pulidas; pestañas Viajes/Rutas/Diagnóstico/Ajustes solo revisadas por el detector automático en el cockpit, no visualmente; modo GPS (`viewLiveGps`) no revisado a otros tamaños.
+## Bloque 5 (hecho)
+- Gráficas Chart.js con `chartAnim()`: off = sin animar; estándar = 450 ms; premium = 900 ms y línea que se dibuja punto a punto. Sin animar al conducir ni con movimiento reducido.
+- Ya existía: dígitos animados (number-flow) en lecturas, barras con transición.
+- Medición `node tests/perf.mjs` (Chromium headless de escritorio; CPU 1× y 4× emulada; 1024×600, simulador).
+- Pendiente: skeleton/shimmer, spring, count-up en tarjetas de estadísticas, plugin Bluetooth nativo, i18n, pestañas distintas de En vivo.

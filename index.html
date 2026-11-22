@@ -4551,6 +4551,17 @@ if (window.Chart) {
 const tipStyle = extra => Object.assign({ backgroundColor: '#1b2531', borderColor: 'rgba(150,200,240,.25)', borderWidth: 1, titleColor: C.ink, bodyColor: C.ink2, titleFont: { weight: '600', size: 13 }, bodyFont: { size: 12.5 }, padding: 10, displayColors: false, cornerRadius: 8, caretSize: 6 }, extra);
 const axisX = o => ({ type: 'linear', grid: { display: false }, border: { color: C.base }, ticks: { maxTicksLimit: 7, callback: v => o.fmtX ? o.fmtX(v) : fmt(v) }, title: o.xTitle ? { display: true, text: o.xTitle, color: C.muted, font: { size: 11.5 } } : undefined });
 const axisY = o => ({ beginAtZero: !!o.zero, grid: { color: C.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: v => o.fmtY ? o.fmtY(v) : fmt(v) } });
+/* Animación de gráficas según el nivel (off/standard/premium); sin animar al conducir ni con movimiento reducido */
+function chartAnim(kind, n = 0) {
+  if (Fx.reduced() || document.body.classList.contains('driving')) return false;
+  const prem = S.anim === 'premium';
+  if (kind === 'line' && prem && n > 1) {
+    const total = 1100, per = total / n, prevY = c => c.index === 0 ? c.chart.scales.y.getPixelForValue(c.chart.scales.y.min) : c.chart.getDatasetMeta(c.datasetIndex).data[c.index - 1].getProps(['y'], true).y;
+    return { x: { type: 'number', easing: 'linear', duration: per, from: NaN, delay(c) { if (c.type !== 'data' || c.xStarted) return 0; c.xStarted = true; return c.index * per; } },
+             y: { type: 'number', easing: 'linear', duration: per, from: prevY, delay(c) { if (c.type !== 'data' || c.yStarted) return 0; c.yStarted = true; return c.index * per; } } };
+  }
+  return { duration: prem ? 900 : 450, easing: 'easeOutQuart' };
+}
 function lineChart(wrap, xs, ys, o = {}) {
   if (!wrap || !window.Chart) return;
   const cv = wrap.querySelector('canvas'), ctx = cv.getContext('2d');
@@ -4561,7 +4572,7 @@ function lineChart(wrap, xs, ys, o = {}) {
     pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: C.accent, pointHoverBorderColor: C.surface, pointHoverBorderWidth: 2 }];
   if (o.ref != null && xs.length) ds.push({ label: o.refLabel || 'Meta', data: [{ x: xs[0], y: o.ref }, { x: xs[xs.length - 1], y: o.ref }], borderColor: '#0ca30c', borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0, fill: false });
   charts.push(new Chart(cv, { type: 'line', data: { datasets: ds },
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 400 }, interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    options: { responsive: true, maintainAspectRatio: false, animation: chartAnim('line', xs.length), interaction: { mode: 'nearest', axis: 'x', intersect: false },
       scales: { x: Object.assign(axisX(o), { min: xs[0], max: xs[xs.length - 1] }), y: axisY(o) },
       plugins: { legend: { display: o.ref != null, position: 'top', align: 'end', labels: { boxWidth: 16, boxHeight: 2, color: C.ink2, font: { size: 12 } } },
         tooltip: tipStyle({ filter: it => it.datasetIndex === 0, callbacks: { title: it => o.tipTitle ? o.tipTitle(it[0].dataIndex) : '', label: it => o.tipText ? o.tipText(it.dataIndex) : fmt(it.parsed.y, 1) } }) } } }));
@@ -4574,7 +4585,7 @@ function barChart(wrap, labels, vals, o = {}) {
   const ds = [{ label: o.label || '', data: vals, backgroundColor: vals.map((v, i) => i === o.mark ? '#8fd0fa' : C.accent), borderRadius: { topLeft: 4, topRight: 4 }, borderSkipped: 'bottom', barPercentage: 0.85, categoryPercentage: 0.9, maxBarThickness: 46 }];
   if (o.ref != null) ds.push({ type: 'line', label: o.refLabel || 'Meta', data: vals.map(() => o.ref), borderColor: '#0ca30c', borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0, fill: false });
   charts.push(new Chart(wrap.querySelector('canvas'), { type: 'bar', data: { labels, datasets: ds }, plugins: [markPlugin],
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 400 }, layout: { padding: { top: 18 } },
+    options: { responsive: true, maintainAspectRatio: false, animation: chartAnim('bar'), layout: { padding: { top: 18 } },
       scales: { x: { grid: { display: false }, border: { color: C.base }, ticks: { maxRotation: 0, autoSkip: true } }, y: axisY(Object.assign({ zero: true }, o)) },
       plugins: { legend: { display: o.ref != null, position: 'top', align: 'end', labels: { boxWidth: 16, boxHeight: 2, color: C.ink2 } },
         tooltip: tipStyle({ filter: it => it.datasetIndex === 0, callbacks: { title: it => o.tipTitle ? o.tipTitle(it[0].dataIndex) : '', label: it => o.tipText ? o.tipText(it.dataIndex) : fmt(it.parsed.y, 1) } }) } } }));
@@ -4583,7 +4594,7 @@ function scatterChart(wrap, pts, o = {}) {
   if (!wrap || !window.Chart) return;
   charts.push(new Chart(wrap.querySelector('canvas'), { type: 'scatter',
     data: { datasets: [{ data: pts.map(p => ({ x: p.x, y: p.y })), backgroundColor: C.accent, borderColor: C.surface, borderWidth: 2, pointRadius: 6, pointHoverRadius: 8 }] },
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    options: { responsive: true, maintainAspectRatio: false, animation: chartAnim('scatter'),
       onClick: (e, els) => { if (els.length && o.onPick) o.onPick(els[0].index); },
       scales: { x: Object.assign(axisX({ xTitle: 'Puntaje eco' }), { min: 0, max: 100, ticks: { stepSize: 25 } }), y: axisY(o) },
       plugins: { legend: { display: false }, tooltip: tipStyle({ callbacks: { title: it => o.tipTitle ? o.tipTitle(it[0].dataIndex) : '', label: it => o.tipText ? o.tipText(it.dataIndex) : '' } }) } } }));
